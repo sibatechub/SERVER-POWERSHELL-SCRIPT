@@ -1,0 +1,82 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Ultimate Enterprise Scanner"; $form.Size = "500,750"; $form.StartPosition = "CenterScreen"
+
+# --- UI Elements ---
+$comboDevices = New-Object System.Windows.Forms.ComboBox; $comboDevices.Location = "20,30"; $comboDevices.Size = "440,20"
+$comboDevices.AutoCompleteMode = "SuggestAppend"; $comboDevices.AutoCompleteSource = "ListItems"
+if (Get-Module ActiveDirectory) { $comboDevices.Items.AddRange((Get-ADComputer -Filter * | Select-Object -ExpandProperty Name)) }
+$form.Controls.Add($comboDevices)
+
+$btnScan = New-Object System.Windows.Forms.Button; $btnScan.Text = "Scan"; $btnScan.Location = "20,70"; $btnScan.Size = "215,40"
+$form.Controls.Add($btnScan)
+
+$btnExport = New-Object System.Windows.Forms.Button; $btnExport.Text = "Export to CSV"; $btnExport.Location = "245,70"; $btnExport.Size = "215,40"
+$form.Controls.Add($btnExport)
+
+# DataGridView
+$grid = New-Object System.Windows.Forms.DataGridView
+$grid.Location = "20,120"; $grid.Size = "440,500"
+$grid.ColumnCount = 2
+$grid.Columns[0].Name = "Property"; $grid.Columns[0].Width = 150
+$grid.Columns[1].Name = "Value"; $grid.Columns[1].Width = 270
+$form.Controls.Add($grid)
+
+# --- Function ---
+function Run-EnterpriseScan {
+    param($target)
+    if ([string]::IsNullOrWhiteSpace($target)) { return }
+    $grid.Rows.Clear()
+    
+    try {
+        $adComp = Get-ADComputer -Identity $target -Properties DistinguishedName
+        $ou = ($adComp.DistinguishedName -split ',', 2)[1]
+        
+        $info = Invoke-Command -ComputerName $target -ScriptBlock {
+            $cs = Get-CimInstance Win32_ComputerSystem
+            $os = Get-CimInstance Win32_OperatingSystem
+            $net = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true } | Select-Object -First 1
+            return "$($cs.Manufacturer)|$($cs.Model)|$($os.Caption)|$($net.IPAddress[0])|$($net.MACAddress)|$($cs.UserName)"
+        } -ErrorAction Stop
+        
+        $data = $info.Split('|')
+        
+        $grid.Rows.Add("ComputerName", $target)
+        $grid.Rows.Add("OU", $ou)
+        $grid.Rows.Add("LoggedUser", $data[5])
+        $grid.Rows.Add("Manufacturer", $data[0])
+        $grid.Rows.Add("Model", $data[1])
+        $grid.Rows.Add("OS", $data[2])
+        $grid.Rows.Add("IPAddress", $data[3])
+        $grid.Rows.Add("MACAddress", $data[4])
+        
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Error connecting to $target")
+    }
+}
+
+# --- Export Logic ---
+$btnExport.Add_Click({
+    if ($grid.Rows.Count -gt 0) {
+        $path = [System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), "DeviceReport.csv")
+        $csvContent = [System.Collections.Generic.List[string]]::new()
+        
+        # Standard CSV format with quotes for column stability
+        $csvContent.Add('"Property","Value"')
+        
+        foreach ($row in $grid.Rows) {
+            $val1 = '"' + $row.Cells[0].Value + '"'
+            $val2 = '"' + $row.Cells[1].Value + '"'
+            $csvContent.Add("$val1,$val2")
+        }
+        
+        [System.IO.File]::WriteAllLines($path, $csvContent, [System.Text.Encoding]::UTF8)
+        [System.Windows.Forms.MessageBox]::Show("Report saved to Desktop as DeviceReport.csv")
+    }
+})
+
+$btnScan.Add_Click({ Run-EnterpriseScan $comboDevices.Text })
+$form.ShowDialog()
