@@ -1,0 +1,14 @@
+Import-Module DnsServer
+
+$policies = Get-DnsServerQueryResolutionPolicy | Where-Object { $_.Name -like "Block_*" }
+foreach ($p in $policies) {
+    Remove-DnsServerQueryResolutionPolicy -Name $p.Name -Force -ErrorAction SilentlyContinue
+}
+
+$subnets = Get-DnsServerClientSubnet | Where-Object { $_.Name -like "Subnet_*" }
+foreach ($s in $subnets) {
+    Remove-DnsServerClientSubnet -Name $s.Name -Force -ErrorAction SilentlyContinue
+}
+
+Clear-DnsServerCache
+[System.Windows.MessageBox]::Show("Server cleanup complete!")
