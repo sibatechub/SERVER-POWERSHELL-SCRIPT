@@ -1,0 +1,494 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Pro Multi-PC Active Directory Hosts Manager"
+$form.Size = New-Object System.Drawing.Size(720, 820)
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+$form.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+
+$lblOU = New-Object System.Windows.Forms.Label
+$lblOU.Location = New-Object System.Drawing.Point(20, 15)
+$lblOU.Size = New-Object System.Drawing.Size(240, 20)
+$lblOU.Text = "Select Organizational Unit (OU):"
+$lblOU.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($lblOU)
+
+$cmbOUs = New-Object System.Windows.Forms.ComboBox
+$cmbOUs.Location = New-Object System.Drawing.Point(20, 38)
+$cmbOUs.Size = New-Object System.Drawing.Size(240, 25)
+$cmbOUs.DropDownStyle = "DropDownList"
+$form.Controls.Add($cmbOUs)
+
+$lblComp = New-Object System.Windows.Forms.Label
+$lblComp.Location = New-Object System.Drawing.Point(20, 72)
+$lblComp.Size = New-Object System.Drawing.Size(240, 20)
+$lblComp.Text = "Select Target Computers:"
+$lblComp.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($lblComp)
+
+$txtFilter = New-Object System.Windows.Forms.TextBox
+$txtFilter.Location = New-Object System.Drawing.Point(20, 95)
+$txtFilter.Size = New-Object System.Drawing.Size(240, 25)
+$txtFilter.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$txtFilter.Text = "Type to filter computers..."
+$txtFilter.ForeColor = [System.Drawing.Color]::Gray
+$form.Controls.Add($txtFilter)
+
+$clbComputers = New-Object System.Windows.Forms.CheckedListBox
+$clbComputers.Location = New-Object System.Drawing.Point(20, 125)
+$clbComputers.Size = New-Object System.Drawing.Size(240, 230)
+$clbComputers.CheckOnClick = $true
+$form.Controls.Add($clbComputers)
+
+$btnSelectAll = New-Object System.Windows.Forms.Button
+$btnSelectAll.Location = New-Object System.Drawing.Point(20, 362)
+$btnSelectAll.Size = New-Object System.Drawing.Size(115, 28)
+$btnSelectAll.Text = "Select All"
+$btnSelectAll.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$form.Controls.Add($btnSelectAll)
+
+$btnDeselectAll = New-Object System.Windows.Forms.Button
+$btnDeselectAll.Location = New-Object System.Drawing.Point(145, 362)
+$btnDeselectAll.Size = New-Object System.Drawing.Size(115, 28)
+$btnDeselectAll.Text = "Deselect All"
+$btnDeselectAll.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$form.Controls.Add($btnDeselectAll)
+
+$btnRefresh = New-Object System.Windows.Forms.Button
+$btnRefresh.Location = New-Object System.Drawing.Point(20, 396)
+$btnRefresh.Size = New-Object System.Drawing.Size(115, 28)
+$btnRefresh.Text = "Refresh AD"
+$btnRefresh.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$form.Controls.Add($btnRefresh)
+
+$btnPing = New-Object System.Windows.Forms.Button
+$btnPing.Location = New-Object System.Drawing.Point(145, 396)
+$btnPing.Size = New-Object System.Drawing.Size(115, 28)
+$btnPing.Text = "Ping Selected"
+$btnPing.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$form.Controls.Add($btnPing)
+
+$lblDomain = New-Object System.Windows.Forms.Label
+$lblDomain.Location = New-Object System.Drawing.Point(300, 15)
+$lblDomain.Size = New-Object System.Drawing.Size(380, 20)
+$lblDomain.Text = "Website Domain (e.g., facebook.com):"
+$lblDomain.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($lblDomain)
+
+$txtDomain = New-Object System.Windows.Forms.TextBox
+$txtDomain.Location = New-Object System.Drawing.Point(300, 38)
+$txtDomain.Size = New-Object System.Drawing.Size(380, 25)
+$txtDomain.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$form.Controls.Add($txtDomain)
+
+$lblIP = New-Object System.Windows.Forms.Label
+$lblIP.Location = New-Object System.Drawing.Point(300, 72)
+$lblIP.Size = New-Object System.Drawing.Size(380, 20)
+$lblIP.Text = "Redirect IP (e.g., 0.0.0.0 or 127.0.0.1):"
+$lblIP.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($lblIP)
+
+$txtIP = New-Object System.Windows.Forms.TextBox
+$txtIP.Location = New-Object System.Drawing.Point(300, 95)
+$txtIP.Size = New-Object System.Drawing.Size(380, 25)
+$txtIP.Text = "0.0.0.0"
+$txtIP.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$form.Controls.Add($txtIP)
+
+$btnBlock = New-Object System.Windows.Forms.Button
+$btnBlock.Location = New-Object System.Drawing.Point(300, 140)
+$btnBlock.Size = New-Object System.Drawing.Size(380, 42)
+$btnBlock.Text = "BLOCK WEBSITE"
+$btnBlock.BackColor = [System.Drawing.Color]::FromArgb(217, 83, 79)
+$btnBlock.ForeColor = [System.Drawing.Color]::White
+$btnBlock.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$btnBlock.FlatStyle = "Flat"
+$form.Controls.Add($btnBlock)
+
+$btnUnblock = New-Object System.Windows.Forms.Button
+$btnUnblock.Location = New-Object System.Drawing.Point(300, 192)
+$btnUnblock.Size = New-Object System.Drawing.Size(380, 38)
+$btnUnblock.Text = "UNBLOCK WEBSITE"
+$btnUnblock.BackColor = [System.Drawing.Color]::FromArgb(92, 184, 92)
+$btnUnblock.ForeColor = [System.Drawing.Color]::White
+$btnUnblock.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
+$btnUnblock.FlatStyle = "Flat"
+$form.Controls.Add($btnUnblock)
+
+$btnCheck = New-Object System.Windows.Forms.Button
+$btnCheck.Location = New-Object System.Drawing.Point(300, 240)
+$btnCheck.Size = New-Object System.Drawing.Size(380, 35)
+$btnCheck.Text = "Check Existing Blocks on Selected"
+$btnCheck.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$btnCheck.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnCheck.FlatStyle = "Flat"
+$form.Controls.Add($btnCheck)
+
+$btnRestore = New-Object System.Windows.Forms.Button
+$btnRestore.Location = New-Object System.Drawing.Point(300, 285)
+$btnRestore.Size = New-Object System.Drawing.Size(380, 35)
+$btnRestore.Text = "Restore Latest Backup"
+$btnRestore.BackColor = [System.Drawing.Color]::FromArgb(255, 193, 7)
+$btnRestore.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnRestore.FlatStyle = "Flat"
+$form.Controls.Add($btnRestore)
+
+$lblLog = New-Object System.Windows.Forms.Label
+$lblLog.Location = New-Object System.Drawing.Point(20, 440)
+$lblLog.Size = New-Object System.Drawing.Size(300, 20)
+$lblLog.Text = "Operation Log:"
+$lblLog.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$form.Controls.Add($lblLog)
+
+$txtLog = New-Object System.Windows.Forms.TextBox
+$txtLog.Location = New-Object System.Drawing.Point(20, 465)
+$txtLog.Size = New-Object System.Drawing.Size(660, 220)
+$txtLog.Multiline = $true
+$txtLog.ScrollBars = "Vertical"
+$txtLog.ReadOnly = $true
+$txtLog.BackColor = [System.Drawing.Color]::FromArgb(245, 245, 245)
+$txtLog.Font = New-Object System.Drawing.Font("Consolas", 9)
+$form.Controls.Add($txtLog)
+
+$btnExport = New-Object System.Windows.Forms.Button
+$btnExport.Location = New-Object System.Drawing.Point(420, 698)
+$btnExport.Size = New-Object System.Drawing.Size(120, 30)
+$btnExport.Text = "Export Log"
+$btnExport.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$btnExport.FlatStyle = "Flat"
+$form.Controls.Add($btnExport)
+
+$btnClearLog = New-Object System.Windows.Forms.Button
+$btnClearLog.Location = New-Object System.Drawing.Point(560, 698)
+$btnClearLog.Size = New-Object System.Drawing.Size(120, 30)
+$btnClearLog.Text = "Clear Log"
+$btnClearLog.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$btnClearLog.FlatStyle = "Flat"
+$form.Controls.Add($btnClearLog)
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = New-Object System.Drawing.Point(20, 740)
+$progressBar.Size = New-Object System.Drawing.Size(660, 20)
+$progressBar.Style = "Continuous"
+$form.Controls.Add($progressBar)
+
+$allComputersCache = @()
+$filteredComputers = @()
+
+function Write-Log {
+    param([string]$message)
+    $timestamp = Get-Date -Format "HH:mm:ss"
+    $txtLog.AppendText("[$timestamp] $message`r`n")
+    $txtLog.SelectionStart = $txtLog.Text.Length
+    $txtLog.ScrollToCaret()
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+function Update-Progress {
+    param([int]$current, [int]$total, [string]$status = "")
+    if ($total -gt 0) {
+        $percent = [math]::Round(($current / $total) * 100)
+        $progressBar.Value = $percent
+        if ($status) {
+            $progressBar.AccessibleDescription = $status
+        }
+    }
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+function Test-RemoteAccess {
+    param($ComputerName)
+    try {
+        Test-Path "\\$ComputerName\c$\Windows\System32\drivers\etc\hosts" -ErrorAction Stop
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Update-ComputerList {
+    param([string]$filter = "")
+    
+    $clbComputers.Items.Clear()
+    
+    if ([string]::IsNullOrWhiteSpace($filter) -or $filter -eq "Type to filter computers...") {
+        foreach ($comp in $allComputersCache) {
+            [void]$clbComputers.Items.Add($comp)
+        }
+        $global:filteredComputers = $allComputersCache
+        return
+    }
+    
+    $results = $allComputersCache | Where-Object { $_.ToLower().StartsWith($filter.ToLower()) } | Sort-Object
+    
+    if ($results.Count -eq 0) {
+        [void]$clbComputers.Items.Add("No computers found")
+    } else {
+        foreach ($comp in $results) {
+            [void]$clbComputers.Items.Add($comp)
+        }
+    }
+    $global:filteredComputers = $results
+}
+
+function Load-ActiveDirectoryData {
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+
+        $cmbOUs.Items.Clear()
+        [void]$cmbOUs.Items.Add("[ All Computers / Root Domain ]")
+        
+        $ous = Get-ADOrganizationalUnit -Filter * | Select-Object -ExpandProperty DistinguishedName
+        foreach ($ou in $ous) {
+            [void]$cmbOUs.Items.Add($ou)
+        }
+        $cmbOUs.SelectedIndex = 0
+
+        Load-ComputersBySelection
+        Write-Log "Successfully loaded AD OUs and Computers."
+    }
+    catch {
+        Write-Log "ERROR: Failed to load Active Directory structure."
+        [System.Windows.Forms.MessageBox]::Show("Error loading Active Directory module or OUs.`nMake sure you have the ActiveDirectory module installed and proper permissions.", 
+            "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+    finally {
+        $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    }
+}
+
+function Load-ComputersBySelection {
+    $selectedOU = $cmbOUs.SelectedItem
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+
+    try {
+        if ($selectedOU -eq "[ All Computers / Root Domain ]" -or -not $selectedOU) {
+            $computers = Get-ADComputer -Filter * -Properties Name -ResultPageSize 1000 | 
+                         Select-Object -ExpandProperty Name | 
+                         Sort-Object
+        } else {
+            $computers = Get-ADComputer -Filter * -SearchBase $selectedOU -Properties Name -ResultPageSize 1000 | 
+                         Select-Object -ExpandProperty Name | 
+                         Sort-Object
+        }
+
+        $global:allComputersCache = $computers
+        Update-ComputerList -filter $txtFilter.Text
+        Write-Log "Loaded $($computers.Count) computers from selected OU."
+    }
+    catch {
+        Write-Log "ERROR: Failed to load computers for the selected OU."
+        [System.Windows.Forms.MessageBox]::Show("Failed to load computers. Check your connection and permissions.", 
+            "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+    }
+    finally {
+        $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    }
+}
+
+$txtFilter.Add_TextChanged({
+    if ($txtFilter.Text -eq "Type to filter computers...") { return }
+    Update-ComputerList -filter $txtFilter.Text
+})
+
+$txtFilter.Add_Enter({
+    if ($txtFilter.Text -eq "Type to filter computers...") {
+        $txtFilter.Text = ""
+        $txtFilter.ForeColor = [System.Drawing.Color]::Black
+    }
+})
+
+$txtFilter.Add_Leave({
+    if ([string]::IsNullOrWhiteSpace($txtFilter.Text)) {
+        $txtFilter.Text = "Type to filter computers..."
+        $txtFilter.ForeColor = [System.Drawing.Color]::Gray
+        Update-ComputerList -filter ""
+    }
+})
+
+$cmbOUs.Add_SelectedIndexChanged({
+    Load-ComputersBySelection
+})
+
+$form.Add_Shown({ Load-ActiveDirectoryData })
+$btnRefresh.Add_Click({ Load-ActiveDirectoryData })
+
+$btnSelectAll.Add_Click({
+    for ($i = 0; $i -lt $clbComputers.Items.Count; $i++) { 
+        if ($clbComputers.Items[$i] -ne "No computers found") {
+            $clbComputers.SetItemChecked($i, $true) 
+        }
+    }
+})
+
+$btnDeselectAll.Add_Click({
+    for ($i = 0; $i -lt $clbComputers.Items.Count; $i++) { $clbComputers.SetItemChecked($i, $false) }
+})
+
+$btnPing.Add_Click({
+    $selected = $clbComputers.CheckedItems
+    if ($selected.Count -eq 0) { 
+        [System.Windows.Forms.MessageBox]::Show("Please select at least one computer.", "Warning", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return 
+    }
+    
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+    $total = $selected.Count
+    $current = 0
+    
+    foreach ($pc in $selected) {
+        $current++
+        Update-Progress -current $current -total $total -status "Pinging $pc"
+        
+        if (Test-Connection -ComputerName $pc -Count 1 -Quiet -ErrorAction SilentlyContinue) {
+            Write-Log "Ping -> $pc : ONLINE"
+        } else {
+            Write-Log "Ping -> $pc : OFFLINE"
+        }
+    }
+    
+    Update-Progress -current $total -total $total -status "Complete"
+    $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    [System.Windows.Forms.MessageBox]::Show("Ping completed for $total computers.", "Done", 
+        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+})
+
+$btnBlock.Add_Click({
+    $selected = $clbComputers.CheckedItems
+    $domainInput = $txtDomain.Text.Trim().ToLower()
+    $targetIP = $txtIP.Text.Trim()
+
+    if ($selected.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Please select at least one computer.", "Warning", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($domainInput)) {
+        [System.Windows.Forms.MessageBox]::Show("Please enter a website domain.", "Warning", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+
+    $parsedIP = $null
+    if (-not [System.Net.IPAddress]::TryParse($targetIP, [ref]$parsedIP)) {
+        [System.Windows.Forms.MessageBox]::Show("Invalid IP Address format!`nExample: 0.0.0.0 or 127.0.0.1", "Error", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        return
+    }
+
+    $domainsToAdd = @($domainInput)
+    if (-not $domainInput.StartsWith("www.")) {
+        $domainsToAdd += "www.$domainInput"
+    }
+
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+    $total = $selected.Count
+    $current = 0
+    $successCount = 0
+    $failedCount = 0
+    $alreadyBlockedCount = 0
+
+    Write-Log "========== BLOCK OPERATION STARTED =========="
+    Write-Log "Domain(s): $($domainsToAdd -join ', ')"
+    Write-Log "IP: $targetIP"
+    Write-Log "Target computers: $total"
+    Write-Log "-------------------------------------------"
+
+    foreach ($pc in $selected) {
+        $current++
+        Update-Progress -current $current -total $total -status "Processing $pc"
+        Write-Log "Processing $pc..."
+
+        $hostsPath = "\\$pc\c$\Windows\System32\drivers\etc\hosts"
+        $backupDir = "\\$pc\c$\Windows\System32\drivers\etc\backups"
+
+        try {
+            if (-not (Test-RemoteAccess -ComputerName $pc)) {
+                Write-Log "  -> $pc : ACCESS DENIED / NOT FOUND"
+                $failedCount++
+                continue
+            }
+
+            if (-not (Test-Path $backupDir)) {
+                New-Item -Path $backupDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+            }
+
+            $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            $backupPath = Join-Path $backupDir "hosts.bak_$timestamp"
+            Copy-Item -Path $hostsPath -Destination $backupPath -Force -ErrorAction Stop
+
+            $hostsLines = Get-Content -Path $hostsPath -ErrorAction Stop
+            $addedAny = $false
+            $existingDomains = @()
+
+            foreach ($dom in $domainsToAdd) {
+                $exists = $false
+                foreach ($line in $hostsLines) {
+                    $clean = $line.Trim()
+                    if ($clean.StartsWith("#") -or [string]::IsNullOrWhiteSpace($clean)) { continue }
+                    $parts = -split $clean
+                    if ($parts.Count -ge 2 -and $parts[1].ToLower() -eq $dom) {
+                        $exists = $true
+                        $existingDomains += $dom
+                        break
+                    }
+                }
+
+                if (-not $exists) {
+                    $newEntry = "`n$targetIP`t$dom"
+                    Add-Content -Path $hostsPath -Value $newEntry -Force -ErrorAction Stop
+                    $addedAny = $true
+                }
+            }
+
+            if ($addedAny) {
+                Write-Log "  -> $pc : SUCCESS (Blocked)"
+                $successCount++
+            } else {
+                Write-Log "  -> $pc : ALREADY BLOCKED ($($existingDomains -join ', '))"
+                $alreadyBlockedCount++
+            }
+        }
+        catch {
+            Write-Log "  -> $pc : FAILED ($($_.Exception.Message))"
+            $failedCount++
+        }
+    }
+
+    Write-Log "-------------------------------------------"
+    Write-Log "Block operation completed:"
+    Write-Log "  - Success: $successCount"
+    Write-Log "  - Already blocked: $alreadyBlockedCount"
+    Write-Log "  - Failed: $failedCount"
+    Write-Log "========== BLOCK OPERATION ENDED =========="
+
+    Update-Progress -current $total -total $total -status "Complete"
+    $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    
+    [System.Windows.Forms.MessageBox]::Show(
+        "Blocking process completed.`n`nSuccess: $successCount`nAlready blocked: $alreadyBlockedCount`nFailed: $failedCount", 
+        "Operation Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+})
+
+$btnUnblock.Add_Click({
+    $selected = $clbComputers.CheckedItems
+    $domainInput = $txtDomain.Text.Trim().ToLower()
+
+    if ($selected.Count -eq 0 -or [string]::IsNullOrWhiteSpace($domainInput)) {
+        [System.Windows.Forms.MessageBox]::Show("Please select computers and enter a domain.", "Warning", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+
+    $domainsToRemove = @($domainInput)
+    if (-not $domainInput.StartsWith("www.")) {
+        $domainsToRemove += "www.$domainInput"
+    }
+
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+    $total = $selected.Count
