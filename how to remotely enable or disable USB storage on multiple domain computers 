@@ -1,0 +1,429 @@
+Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Data
+
+$Form = New-Object System.Windows.Forms.Form
+$Form.Text = "USB Manager"
+$Form.Size = New-Object System.Drawing.Size(850,650)
+$Form.StartPosition = "CenterScreen"
+
+# ===== Label OU =====
+$LabelOU = New-Object System.Windows.Forms.Label
+$LabelOU.Text = "Select OU:"
+$LabelOU.Location = New-Object System.Drawing.Point(20,20)
+$LabelOU.Size = New-Object System.Drawing.Size(100,25)
+$Form.Controls.Add($LabelOU)
+
+# ===== ComboBox OU =====
+$OUCombo = New-Object System.Windows.Forms.ComboBox
+$OUCombo.Location = New-Object System.Drawing.Point(20,50)
+$OUCombo.Size = New-Object System.Drawing.Size(200,25)
+$OUCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$Form.Controls.Add($OUCombo)
+
+# ===== Load OUs =====
+function LoadOUs {
+    $OUCombo.Items.Clear()
+    $OUCombo.Text = "Loading OUs..."
+    try {
+        $OUs = Get-ADOrganizationalUnit -Filter * | Select-Object -ExpandProperty Name | Sort-Object
+        foreach ($OU in $OUs) {
+            $OUCombo.Items.Add($OU)
+        }
+        if ($OUCombo.Items.Count -gt 0) {
+            $OUCombo.SelectedIndex = 0
+        }
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Error loading OUs: $_")
+    }
+    $OUCombo.Text = ""
+}
+LoadOUs
+
+# ===== Label Computers =====
+$Label1 = New-Object System.Windows.Forms.Label
+$Label1.Text = "Computers in OU:"
+$Label1.Location = New-Object System.Drawing.Point(240,20)
+$Label1.Size = New-Object System.Drawing.Size(150,25)
+$Form.Controls.Add($Label1)
+
+# ===== ComboBox Computers =====
+$ComboBox = New-Object System.Windows.Forms.ComboBox
+$ComboBox.Location = New-Object System.Drawing.Point(240,50)
+$ComboBox.Size = New-Object System.Drawing.Size(200,25)
+$ComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$Form.Controls.Add($ComboBox)
+
+# ===== Load Computers from OU =====
+function LoadComputersFromOU {
+    $ComboBox.Items.Clear()
+    $ComboBox.Text = "Loading..."
+    $SelectedOU = $OUCombo.SelectedItem
+    if (-not $SelectedOU) { return }
+    try {
+        $Computers = Get-ADComputer -Filter * -SearchBase "OU=$SelectedOU,$((Get-ADDomain).DistinguishedName)" | Select-Object -ExpandProperty Name | Sort-Object
+        foreach ($Computer in $Computers) {
+            $ComboBox.Items.Add($Computer)
+        }
+        if ($ComboBox.Items.Count -gt 0) {
+            $ComboBox.SelectedIndex = 0
+        }
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Error loading computers: $_")
+    }
+    $ComboBox.Text = ""
+}
+
+$OUCombo.Add_SelectedIndexChanged({ LoadComputersFromOU })
+LoadComputersFromOU
+
+# ===== Refresh Button =====
+$RefreshBtn = New-Object System.Windows.Forms.Button
+$RefreshBtn.Text = "Refresh"
+$RefreshBtn.Location = New-Object System.Drawing.Point(460,48)
+$RefreshBtn.Size = New-Object System.Drawing.Size(80,30)
+$RefreshBtn.BackColor = [System.Drawing.Color]::LightBlue
+$RefreshBtn.Add_Click({
+    LoadOUs
+    LoadComputersFromOU
+})
+$Form.Controls.Add($RefreshBtn)
+
+# ===== Add Button =====
+$AddBtn = New-Object System.Windows.Forms.Button
+$AddBtn.Text = "Add >>"
+$AddBtn.Location = New-Object System.Drawing.Point(560,48)
+$AddBtn.Size = New-Object System.Drawing.Size(80,30)
+$AddBtn.BackColor = [System.Drawing.Color]::LightGreen
+$AddBtn.Add_Click({
+    $Computer = $ComboBox.SelectedItem
+    if ($Computer -and -not $SelectedList.Items.Contains($Computer)) {
+        $SelectedList.Items.Add($Computer)
+    }
+})
+$Form.Controls.Add($AddBtn)
+
+# ===== Add All Button =====
+$AddAllBtn = New-Object System.Windows.Forms.Button
+$AddAllBtn.Text = "Add All >>"
+$AddAllBtn.Location = New-Object System.Drawing.Point(560,85)
+$AddAllBtn.Size = New-Object System.Drawing.Size(80,30)
+$AddAllBtn.BackColor = [System.Drawing.Color]::LightBlue
+$AddAllBtn.Add_Click({
+    foreach ($Computer in $ComboBox.Items) {
+        if (-not $SelectedList.Items.Contains($Computer)) {
+            $SelectedList.Items.Add($Computer)
+        }
+    }
+})
+$Form.Controls.Add($AddAllBtn)
+
+# ===== Label Selected =====
+$Label2 = New-Object System.Windows.Forms.Label
+$Label2.Text = "Selected Computers:"
+$Label2.Location = New-Object System.Drawing.Point(20,100)
+$Label2.Size = New-Object System.Drawing.Size(150,25)
+$Form.Controls.Add($Label2)
+
+# ===== ListBox Selected =====
+$SelectedList = New-Object System.Windows.Forms.ListBox
+$SelectedList.Location = New-Object System.Drawing.Point(20,130)
+$SelectedList.Size = New-Object System.Drawing.Size(500,120)
+$SelectedList.SelectionMode = [System.Windows.Forms.SelectionMode]::MultiExtended
+$Form.Controls.Add($SelectedList)
+
+# ===== Remove Button =====
+$RemoveBtn = New-Object System.Windows.Forms.Button
+$RemoveBtn.Text = "Remove Selected"
+$RemoveBtn.Location = New-Object System.Drawing.Point(540,130)
+$RemoveBtn.Size = New-Object System.Drawing.Size(120,30)
+$RemoveBtn.BackColor = [System.Drawing.Color]::LightCoral
+$RemoveBtn.Add_Click({
+    $ItemsToRemove = @()
+    foreach ($Item in $SelectedList.SelectedItems) {
+        $ItemsToRemove += $Item
+    }
+    foreach ($Item in $ItemsToRemove) {
+        $SelectedList.Items.Remove($Item)
+    }
+})
+$Form.Controls.Add($RemoveBtn)
+
+# ===== Clear All Button =====
+$ClearBtn = New-Object System.Windows.Forms.Button
+$ClearBtn.Text = "Clear All"
+$ClearBtn.Location = New-Object System.Drawing.Point(540,170)
+$ClearBtn.Size = New-Object System.Drawing.Size(120,30)
+$ClearBtn.BackColor = [System.Drawing.Color]::LightGray
+$ClearBtn.Add_Click({ $SelectedList.Items.Clear() })
+$Form.Controls.Add($ClearBtn)
+
+# ===== Count Label =====
+$CountLabel = New-Object System.Windows.Forms.Label
+$CountLabel.Text = "Count: 0"
+$CountLabel.Location = New-Object System.Drawing.Point(540,210)
+$CountLabel.Size = New-Object System.Drawing.Size(120,25)
+$CountLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$Form.Controls.Add($CountLabel)
+
+$SelectedList.Add_SelectedIndexChanged({
+    $CountLabel.Text = "Count: $($SelectedList.Items.Count)"
+})
+
+# ===== Progress Bar =====
+$ProgressBar = New-Object System.Windows.Forms.ProgressBar
+$ProgressBar.Location = New-Object System.Drawing.Point(20,270)
+$ProgressBar.Size = New-Object System.Drawing.Size(700,25)
+$ProgressBar.Minimum = 0
+$ProgressBar.Maximum = 100
+$ProgressBar.Value = 0
+$Form.Controls.Add($ProgressBar)
+
+# ===== Status Label =====
+$StatusLabel = New-Object System.Windows.Forms.Label
+$StatusLabel.Text = "Ready"
+$StatusLabel.Location = New-Object System.Drawing.Point(20,300)
+$StatusLabel.Size = New-Object System.Drawing.Size(700,25)
+$StatusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$Form.Controls.Add($StatusLabel)
+
+# ===== Log TextBox =====
+$LogTextBox = New-Object System.Windows.Forms.TextBox
+$LogTextBox.Location = New-Object System.Drawing.Point(20,340)
+$LogTextBox.Size = New-Object System.Drawing.Size(700,180)
+$LogTextBox.Multiline = $true
+$LogTextBox.ScrollBars = [System.Windows.Forms.ScrollBars]::Vertical
+$LogTextBox.ReadOnly = $true
+$LogTextBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+$Form.Controls.Add($LogTextBox)
+
+# ===== Clear Log Button =====
+$ClearLogBtn = New-Object System.Windows.Forms.Button
+$ClearLogBtn.Text = "Clear Log"
+$ClearLogBtn.Location = New-Object System.Drawing.Point(740,340)
+$ClearLogBtn.Size = New-Object System.Drawing.Size(80,30)
+$ClearLogBtn.BackColor = [System.Drawing.Color]::LightGray
+$ClearLogBtn.Add_Click({ $LogTextBox.Clear() })
+$Form.Controls.Add($ClearLogBtn)
+
+# ===== Export Log Button =====
+$ExportLogBtn = New-Object System.Windows.Forms.Button
+$ExportLogBtn.Text = "Export Log"
+$ExportLogBtn.Location = New-Object System.Drawing.Point(740,380)
+$ExportLogBtn.Size = New-Object System.Drawing.Size(80,30)
+$ExportLogBtn.BackColor = [System.Drawing.Color]::LightYellow
+$ExportLogBtn.Add_Click({
+    if ($LogTextBox.Text -eq "") {
+        [System.Windows.Forms.MessageBox]::Show("Log is empty")
+        return
+    }
+    $SaveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+    $SaveFileDialog.Filter = "Log Files (*.log)|*.log|Text Files (*.txt)|*.txt"
+    $SaveFileDialog.FileName = "USB_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+    if ($SaveFileDialog.ShowDialog() -eq "OK") {
+        [System.IO.File]::WriteAllText($SaveFileDialog.FileName, $LogTextBox.Text)
+        [System.Windows.Forms.MessageBox]::Show("Log exported to: $($SaveFileDialog.FileName)")
+    }
+})
+$Form.Controls.Add($ExportLogBtn)
+
+# ===== Function to add log entry =====
+function Add-LogEntry {
+    param([string]$Computer, [string]$Status, [string]$Message = "")
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogEntry = "[$Timestamp] $Computer - $Status"
+    if ($Message -ne "") {
+        $LogEntry += " - $Message"
+    }
+    $LogTextBox.AppendText("$LogEntry`r`n")
+    $LogTextBox.ScrollToCaret()
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+# ===== Function to Disable USB =====
+function Disable-USBOnly {
+    param([string]$Computer)
+    
+    $ScriptBlock = {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR" -Name "Start" -Value 4 -Force
+        Stop-Service -Name "USBSTOR" -Force -ErrorAction SilentlyContinue
+        
+        $RegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions"
+        if (-not (Test-Path $RegPath)) {
+            New-Item -Path $RegPath -Force | Out-Null
+        }
+        Set-ItemProperty -Path $RegPath -Name "DenyRemovableDevices" -Value 1 -Force
+        Set-ItemProperty -Path $RegPath -Name "DenyUnspecifiedDevices" -Value 1 -Force
+        
+        $RegPath2 = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices"
+        if (-not (Test-Path $RegPath2)) {
+            New-Item -Path $RegPath2 -Force | Out-Null
+        }
+        Set-ItemProperty -Path $RegPath2 -Name "Deny_All" -Value 1 -Force
+        
+        $RegPath3 = "HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
+        if (-not (Test-Path $RegPath3)) {
+            New-Item -Path $RegPath3 -Force | Out-Null
+        }
+        Set-ItemProperty -Path $RegPath3 -Name "WriteProtect" -Value 1 -Force
+        
+        gpupdate /force
+        Restart-Service -Name "PlugPlay" -Force -ErrorAction SilentlyContinue
+        
+        return "USB Disabled"
+    }
+    
+    $Result = Invoke-Command -ComputerName $Computer -ScriptBlock $ScriptBlock -ErrorAction SilentlyContinue
+    return $Result
+}
+
+# ===== Function to Enable USB =====
+function Enable-USBOnly {
+    param([string]$Computer)
+    
+    $ScriptBlock = {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\USBSTOR" -Name "Start" -Value 3 -Force
+        Start-Service -Name "USBSTOR" -ErrorAction SilentlyContinue
+        
+        $RegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions"
+        if (Test-Path $RegPath) {
+            Set-ItemProperty -Path $RegPath -Name "DenyRemovableDevices" -Value 0 -Force
+            Set-ItemProperty -Path $RegPath -Name "DenyUnspecifiedDevices" -Value 0 -Force
+        }
+        
+        $RegPath2 = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\RemovableStorageDevices"
+        if (Test-Path $RegPath2) {
+            Set-ItemProperty -Path $RegPath2 -Name "Deny_All" -Value 0 -Force
+        }
+        
+        $RegPath3 = "HKLM:\SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
+        if (Test-Path $RegPath3) {
+            Set-ItemProperty -Path $RegPath3 -Name "WriteProtect" -Value 0 -Force
+        }
+        
+        gpupdate /force
+        Restart-Service -Name "PlugPlay" -Force -ErrorAction SilentlyContinue
+        
+        return "USB Enabled"
+    }
+    
+    $Result = Invoke-Command -ComputerName $Computer -ScriptBlock $ScriptBlock -ErrorAction SilentlyContinue
+    return $Result
+}
+
+# ===== Disable Button =====
+$DisableBtn = New-Object System.Windows.Forms.Button
+$DisableBtn.Text = "Disable USB"
+$DisableBtn.Location = New-Object System.Drawing.Point(20,540)
+$DisableBtn.Size = New-Object System.Drawing.Size(270,45)
+$DisableBtn.BackColor = [System.Drawing.Color]::LightCoral
+$DisableBtn.Add_Click({
+    if ($SelectedList.Items.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("List is empty")
+        return
+    }
+    $LogTextBox.Clear()
+    Add-LogEntry -Computer "START" -Status "INFO" -Message "========== Disable USB Operation Started =========="
+    Add-LogEntry -Computer "TOTAL" -Status "INFO" -Message "Total computers: $($SelectedList.Items.Count)"
+    
+    $DisableBtn.Enabled = $false
+    $EnableBtn.Enabled = $false
+    $ProgressBar.Maximum = $SelectedList.Items.Count
+    $ProgressBar.Value = 0
+    $Total = $SelectedList.Items.Count
+    $Current = 0
+    $SuccessCount = 0
+    $FailedCount = 0
+    $OfflineCount = 0
+    
+    foreach ($Computer in $SelectedList.Items) {
+        $Current++
+        $ProgressBar.Value = $Current
+        $StatusLabel.Text = "Processing $Computer ($Current / $Total)"
+        $StatusLabel.Refresh()
+        
+        if (Test-Connection $Computer -Count 1 -Quiet) {
+            try {
+                Disable-USBOnly -Computer $Computer
+                Add-LogEntry -Computer $Computer -Status "SUCCESS" -Message "USB Disabled"
+                $SuccessCount++
+            } catch {
+                Add-LogEntry -Computer $Computer -Status "FAILED" -Message "Error: $_"
+                $FailedCount++
+            }
+        } else {
+            Add-LogEntry -Computer $Computer -Status "OFFLINE" -Message "Computer not reachable"
+            $OfflineCount++
+        }
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    
+    Add-LogEntry -Computer "SUMMARY" -Status "INFO" -Message "Success: $SuccessCount, Failed: $FailedCount, Offline: $OfflineCount"
+    Add-LogEntry -Computer "END" -Status "INFO" -Message "========== Disable USB Operation Completed =========="
+    
+    $StatusLabel.Text = "Completed! Success: $SuccessCount, Failed: $FailedCount, Offline: $OfflineCount"
+    $ProgressBar.Value = $ProgressBar.Maximum
+    $DisableBtn.Enabled = $true
+    $EnableBtn.Enabled = $true
+})
+$Form.Controls.Add($DisableBtn)
+
+# ===== Enable Button =====
+$EnableBtn = New-Object System.Windows.Forms.Button
+$EnableBtn.Text = "Enable USB"
+$EnableBtn.Location = New-Object System.Drawing.Point(310,540)
+$EnableBtn.Size = New-Object System.Drawing.Size(270,45)
+$EnableBtn.BackColor = [System.Drawing.Color]::LightGreen
+$EnableBtn.Add_Click({
+    if ($SelectedList.Items.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("List is empty")
+        return
+    }
+    $LogTextBox.Clear()
+    Add-LogEntry -Computer "START" -Status "INFO" -Message "========== Enable USB Operation Started =========="
+    Add-LogEntry -Computer "TOTAL" -Status "INFO" -Message "Total computers: $($SelectedList.Items.Count)"
+    
+    $EnableBtn.Enabled = $false
+    $DisableBtn.Enabled = $false
+    $ProgressBar.Maximum = $SelectedList.Items.Count
+    $ProgressBar.Value = 0
+    $Total = $SelectedList.Items.Count
+    $Current = 0
+    $SuccessCount = 0
+    $FailedCount = 0
+    $OfflineCount = 0
+    
+    foreach ($Computer in $SelectedList.Items) {
+        $Current++
+        $ProgressBar.Value = $Current
+        $StatusLabel.Text = "Processing $Computer ($Current / $Total)"
+        $StatusLabel.Refresh()
+        
+        if (Test-Connection $Computer -Count 1 -Quiet) {
+            try {
+                Enable-USBOnly -Computer $Computer
+                Add-LogEntry -Computer $Computer -Status "SUCCESS" -Message "USB Enabled"
+                $SuccessCount++
+            } catch {
+                Add-LogEntry -Computer $Computer -Status "FAILED" -Message "Error: $_"
+                $FailedCount++
+            }
+        } else {
+            Add-LogEntry -Computer $Computer -Status "OFFLINE" -Message "Computer not reachable"
+            $OfflineCount++
+        }
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    
+    Add-LogEntry -Computer "SUMMARY" -Status "INFO" -Message "Success: $SuccessCount, Failed: $FailedCount, Offline: $OfflineCount"
+    Add-LogEntry -Computer "END" -Status "INFO" -Message "========== Enable USB Operation Completed =========="
+    
+    $StatusLabel.Text = "Completed! Success: $SuccessCount, Failed: $FailedCount, Offline: $OfflineCount"
+    $ProgressBar.Value = $ProgressBar.Maximum
+    $EnableBtn.Enabled = $true
+    $DisableBtn.Enabled = $true
+})
+$Form.Controls.Add($EnableBtn)
+
+$Form.ShowDialog() | Out-Null
