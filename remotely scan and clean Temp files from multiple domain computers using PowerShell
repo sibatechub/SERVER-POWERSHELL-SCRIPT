@@ -1,0 +1,417 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$f = New-Object System.Windows.Forms.Form
+$f.Text = "AD Enterprise Remote Cleanup [v9.0]"
+$f.Size = New-Object System.Drawing.Size(1000, 750)
+$f.StartPosition = "CenterScreen"
+$f.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+$f.MaximizeBox = $false
+
+$g1 = New-Object System.Windows.Forms.GroupBox
+$g1.Text = "1. Target Computers & OU"
+$g1.Location = New-Object System.Drawing.Point(10, 10)
+$g1.Size = New-Object System.Drawing.Size(380, 480)
+
+$lblOU = New-Object System.Windows.Forms.Label
+$lblOU.Text = "Selected OU DN:"
+$lblOU.Location = New-Object System.Drawing.Point(15, 25)
+$lblOU.AutoSize = $true
+$g1.Controls.Add($lblOU)
+
+$txtOU = New-Object System.Windows.Forms.TextBox
+$txtOU.Location = New-Object System.Drawing.Point(15, 45)
+$txtOU.Size = New-Object System.Drawing.Size(250, 20)
+$g1.Controls.Add($txtOU)
+
+$btnBrowseOU = New-Object System.Windows.Forms.Button
+$btnBrowseOU.Text = "Browse OU"
+$btnBrowseOU.Location = New-Object System.Drawing.Point(270, 43)
+$btnBrowseOU.Size = New-Object System.Drawing.Size(95, 23)
+$g1.Controls.Add($btnBrowseOU)
+
+$tb = New-Object System.Windows.Forms.TextBox
+$tb.Location = New-Object System.Drawing.Point(15, 78)
+$tb.Size = New-Object System.Drawing.Size(240, 20)
+$g1.Controls.Add($tb)
+
+$bs = New-Object System.Windows.Forms.Button
+$bs.Text = "Search AD"
+$bs.Location = New-Object System.Drawing.Point(260, 76)
+$bs.Size = New-Object System.Drawing.Size(105, 23)
+$g1.Controls.Add($bs)
+
+$lb = New-Object System.Windows.Forms.ListBox
+$lb.Location = New-Object System.Drawing.Point(15, 110)
+$lb.Size = New-Object System.Drawing.Size(350, 290)
+$lb.SelectionMode = [System.Windows.Forms.SelectionMode]::MultiExtended
+$g1.Controls.Add($lb)
+
+$btnSelectAll = New-Object System.Windows.Forms.Button
+$btnSelectAll.Text = "Select All"
+$btnSelectAll.Location = New-Object System.Drawing.Point(15, 410)
+$btnSelectAll.Size = New-Object System.Drawing.Size(170, 25)
+$g1.Controls.Add($btnSelectAll)
+
+$btnRemove = New-Object System.Windows.Forms.Button
+$btnRemove.Text = "Remove Selected"
+$btnRemove.Location = New-Object System.Drawing.Point(195, 410)
+$btnRemove.Size = New-Object System.Drawing.Size(170, 25)
+$g1.Controls.Add($btnRemove)
+
+$f.Controls.Add($g1)
+
+$g2 = New-Object System.Windows.Forms.GroupBox
+$g2.Text = "2. Options & Concurrency"
+$g2.Location = New-Object System.Drawing.Point(400, 10)
+$g2.Size = New-Object System.Drawing.Size(575, 180)
+
+$c1 = New-Object System.Windows.Forms.CheckBox
+$c1.Text = "Windows Temp"
+$c1.Location = New-Object System.Drawing.Point(20, 25); $c1.AutoSize = $true; $c1.Checked = $true
+$g2.Controls.Add($c1)
+
+$c2 = New-Object System.Windows.Forms.CheckBox
+$c2.Text = "User Temp"
+$c2.Location = New-Object System.Drawing.Point(20, 50); $c2.AutoSize = $true; $c2.Checked = $true
+$g2.Controls.Add($c2)
+
+$c3 = New-Object System.Windows.Forms.CheckBox
+$c3.Text = "Recycle Bin"
+$c3.Location = New-Object System.Drawing.Point(20, 75); $c3.AutoSize = $true; $c3.Checked = $true
+$g2.Controls.Add($c3)
+
+$c4 = New-Object System.Windows.Forms.CheckBox
+$c4.Text = "Update Cache"
+$c4.Location = New-Object System.Drawing.Point(20, 100); $c4.AutoSize = $true
+$g2.Controls.Add($c4)
+
+$lblThreads = New-Object System.Windows.Forms.Label
+$lblThreads.Text = "Max Concurrent:"
+$lblThreads.Location = New-Object System.Drawing.Point(20, 135)
+$lblThreads.AutoSize = $true
+$g2.Controls.Add($lblThreads)
+
+$cmbThreads = New-Object System.Windows.Forms.ComboBox
+$cmbThreads.Location = New-Object System.Drawing.Point(130, 132)
+$cmbThreads.Size = New-Object System.Drawing.Size(70, 25)
+$cmbThreads.Items.AddRange(@(5, 10, 20, 50))
+$cmbThreads.SelectedIndex = 1
+$g2.Controls.Add($cmbThreads)
+$f.Controls.Add($g2)
+
+$g3 = New-Object System.Windows.Forms.GroupBox
+$g3.Text = "3. Actions"
+$g3.Location = New-Object System.Drawing.Point(400, 200)
+$g3.Size = New-Object System.Drawing.Size(575, 290)
+
+$bscan = New-Object System.Windows.Forms.Button
+$bscan.Text = "Scan & Analyze"
+$bscan.BackColor = [System.Drawing.Color]::LightBlue
+$bscan.Location = New-Object System.Drawing.Point(20, 25); $bscan.Size = New-Object System.Drawing.Size(255, 40)
+$g3.Controls.Add($bscan)
+
+$bclean = New-Object System.Windows.Forms.Button
+$bclean.Text = "Clean Selected"
+$bclean.BackColor = [System.Drawing.Color]::LightGreen
+$bclean.Location = New-Object System.Drawing.Point(295, 25); $bclean.Size = New-Object System.Drawing.Size(255, 40)
+$g3.Controls.Add($bclean)
+
+$pg = New-Object System.Windows.Forms.ProgressBar
+$pg.Location = New-Object System.Drawing.Point(20, 80); $pg.Size = New-Object System.Drawing.Size(530, 25)
+$g3.Controls.Add($pg)
+
+$lbl = New-Object System.Windows.Forms.Label
+$lbl.Text = "Status: Ready..."
+$lbl.Location = New-Object System.Drawing.Point(20, 115); $lbl.Size = New-Object System.Drawing.Size(530, 160)
+$g3.Controls.Add($lbl)
+$f.Controls.Add($g3)
+
+$g4 = New-Object System.Windows.Forms.GroupBox
+$g4.Text = "4. Detailed Results"
+$g4.Location = New-Object System.Drawing.Point(10, 500)
+$g4.Size = New-Object System.Drawing.Size(965, 205)
+
+$dgv = New-Object System.Windows.Forms.DataGridView
+$dgv.Location = New-Object System.Drawing.Point(15, 22); $dgv.Size = New-Object System.Drawing.Size(935, 170)
+$dgv.ColumnCount = 11
+$dgv.Columns[0].Name = "Computer"; $dgv.Columns[0].Width = 95
+$dgv.Columns[1].Name = "Mode"; $dgv.Columns[1].Width = 60
+$dgv.Columns[2].Name = "WinTemp"; $dgv.Columns[2].Width = 75
+$dgv.Columns[3].Name = "UserTemp"; $dgv.Columns[3].Width = 75
+$dgv.Columns[4].Name = "RecycleBin"; $dgv.Columns[4].Width = 80
+$dgv.Columns[5].Name = "UpdCache"; $dgv.Columns[5].Width = 75
+$dgv.Columns[6].Name = "Total"; $dgv.Columns[6].Width = 75
+$dgv.Columns[7].Name = "Deleted"; $dgv.Columns[7].Width = 65
+$dgv.Columns[8].Name = "Failed"; $dgv.Columns[8].Width = 55
+$dgv.Columns[9].Name = "Status"; $dgv.Columns[9].Width = 70
+$dgv.Columns[10].Name = "Details"; $dgv.Columns[10].Width = 140
+$g4.Controls.Add($dgv)
+$f.Controls.Add($g4)
+
+$btnBrowseOU.Add_Click({
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+        $allOUs = Get-ADOrganizationalUnit -Filter * | Select-Object -ExpandProperty DistinguishedName
+        
+        $ouForm = New-Object System.Windows.Forms.Form
+        $ouForm.Text = "Select Active Directory OU"
+        $ouForm.Size = New-Object System.Drawing.Size(500, 400)
+        $ouForm.StartPosition = "CenterParent"
+        
+        $ouList = New-Object System.Windows.Forms.ListBox
+        $ouList.Location = New-Object System.Drawing.Point(15, 15)
+        $ouList.Size = New-Object System.Drawing.Size(455, 300)
+        $ouList.HorizontalScrollbar = $true
+        foreach($ou in $allOUs) { [void]$ouList.Items.Add($ou) }
+        $ouForm.Controls.Add($ouList)
+        
+        $btnSelect = New-Object System.Windows.Forms.Button
+        $btnSelect.Text = "Select & Load"
+        $btnSelect.Location = New-Object System.Drawing.Point(370, 325)
+        $btnSelect.Size = New-Object System.Drawing.Size(100, 25)
+        $btnSelect.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $ouForm.Controls.Add($btnSelect)
+        
+        if ($ouForm.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK -and $ouList.SelectedItem) {
+            $txtOU.Text = $ouList.SelectedItem
+            $bs.PerformClick()
+        }
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("Error loading OUs: $_")
+    }
+})
+
+$bs.Add_Click({
+    $lb.Items.Clear()
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+        $q = $tb.Text.Trim()
+        $targetOU = $txtOU.Text.Trim()
+        
+        if ([string]::IsNullOrEmpty($targetOU)) {
+            if ([string]::IsNullOrEmpty($q)) {
+                $res = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+            } else {
+                $res = Get-ADComputer -Filter "Name -like '*$q*'" | Select-Object -ExpandProperty Name
+            }
+        } else {
+            if ([string]::IsNullOrEmpty($q)) {
+                $res = Get-ADComputer -Filter * -SearchBase $targetOU | Select-Object -ExpandProperty Name
+            } else {
+                $res = Get-ADComputer -Filter "Name -like '*$q*'" -SearchBase $targetOU | Select-Object -ExpandProperty Name
+            }
+        }
+        
+        foreach($x in $res) { [void]$lb.Items.Add($x) }
+        $lbl.Text = "Loaded $($res.Count) computers from AD."
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("AD Error: $_")
+    }
+})
+
+$btnSelectAll.Add_Click({
+    for ($i = 0; $i -lt $lb.Items.Count; $i++) {
+        $lb.SetSelected($i, $true)
+    }
+})
+
+$btnRemove.Add_Click({
+    $indices = $lb.SelectedIndices | Sort-Object -Descending
+    foreach ($index in $indices) {
+        $lb.Items.RemoveAt($index)
+    }
+})
+
+function Invoke-ParallelExecution {
+    param($computers, $isScanMode, $wTemp, $uTemp, $rBin, $updCache, $maxJobs)
+    
+    $scriptBlock = {
+        param($computer, $scanMode, $wt, $ut, $rb, $uc)
+        
+        $wtBytes = 0; $utBytes = 0; $rbBytes = 0; $ucBytes = 0
+        $deletedCount = 0; $failedCount = 0; $errMsg = "OK"
+        
+        try {
+            $remoteBlock = {
+                param($sMode, $wTemp, $uTemp, $rBin, $updCache)
+                
+                $localWt = 0; $localUt = 0; $localRb = 0; $localUc = 0
+                $script:delCount = 0
+                $script:failCount = 0
+                $doDelete = (-not $sMode)
+
+                function Process-FolderSafely {
+                    param($pathStr, $deleteFlag)
+                    $localSize = 0
+                    if (Test-Path $pathStr) {
+                        $items = Get-ChildItem -Path $pathStr -Force -ErrorAction SilentlyContinue
+                        foreach ($item in $items) {
+                            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
+                            if ($item.PSIsContainer) {
+                                $localSize += (Process-FolderSafely $item.FullName $deleteFlag)
+                            } else {
+                                try {
+                                    $sz = $item.Length
+                                    if ($deleteFlag) {
+                                        Remove-Item $item.FullName -Force -ErrorAction Stop
+                                        $script:delCount++
+                                        $localSize += $sz
+                                    } else {
+                                        $localSize += $sz
+                                        $script:delCount++
+                                    }
+                                } catch {
+                                    $script:failCount++
+                                }
+                            }
+                        }
+                    }
+                    return $localSize
+                }
+
+                if ($wTemp) {
+                    $localWt = Process-FolderSafely "C:\Windows\Temp" $doDelete
+                }
+
+                if ($uTemp) {
+                    $profiles = Get-CimInstance Win32_UserProfile | Where-Object { $_.Special -eq $false -and (Test-Path $_.LocalPath) }
+                    foreach ($prof in $profiles) {
+                        $uPath = Join-Path $prof.LocalPath "AppData\Local\Temp"
+                        $localUt += Process-FolderSafely $uPath $doDelete
+                    }
+                }
+
+                if ($rBin) {
+                    $drives = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
+                    foreach ($drv in $drives) {
+                        $rbPath = "$($drv.DeviceID)\`$Recycle.Bin"
+                        if (Test-Path $rbPath) {
+                            $localRb += Process-FolderSafely $rbPath $doDelete
+                        }
+                    }
+                }
+
+                if ($updCache) {
+                    $updPath = "C:\Windows\SoftwareDistribution\Download"
+                    $svc = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
+                    $wasRunning = $svc -and $svc.Status -eq 'Running'
+                    if ($wasRunning -and $doDelete) {
+                        Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+                        Start-Sleep -Seconds 1
+                    }
+                    $localUc = Process-FolderSafely $updPath $doDelete
+                    if ($wasRunning -and $doDelete) {
+                        Start-Service -Name wuauserv -ErrorAction SilentlyContinue
+                    }
+                }
+
+                return [PSCustomObject]@{
+                    WT = $localWt
+                    UT = $localUt
+                    RB = $localRb
+                    UC = $localUc
+                    Deleted = $script:delCount
+                    Failed = $script:failCount
+                }
+            }
+
+            $resRemote = Invoke-Command -ComputerName $computer -ScriptBlock $remoteBlock -ArgumentList $scanMode, $wt, $ut, $rb, $uc -ErrorAction Stop
+            $wtBytes = $resRemote.WT
+            $utBytes = $resRemote.UT
+            $rbBytes = $resRemote.RB
+            $ucBytes = $resRemote.UC
+            $deletedCount = $resRemote.Deleted
+            $failedCount = $resRemote.Failed
+
+        } catch {
+            $errMsg = $_.Exception.Message
+        }
+        
+        return [PSCustomObject]@{
+            Computer = $computer
+            Mode     = $(if ($scanMode) { "Scan" } else { "Clean" })
+            WT       = [Math]::Round($wtBytes / 1MB, 2)
+            UT       = [Math]::Round($utBytes / 1MB, 2)
+            RB       = [Math]::Round($rbBytes / 1MB, 2)
+            UC       = [Math]::Round($ucBytes / 1MB, 2)
+            Total    = [Math]::Round(($wtBytes + $utBytes + $rbBytes + $ucBytes) / 1MB, 2)
+            Deleted  = $deletedCount
+            Failed   = $failedCount
+            Status   = $(if ($errMsg -eq "OK") { "Success" } else { "Failed" })
+            Details  = $errMsg
+        }
+    }
+
+    $jobs = @()
+    $results = @()
+    
+    foreach ($pc in $computers) {
+        while ((Get-Job -State Running).Count -ge $maxJobs) {
+            Start-Sleep -Milliseconds 200
+        }
+        $jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList $pc, $isScanMode, $wTemp, $uTemp, $rBin, $updCache
+    }
+
+    while ((Get-Job -State Running).Count -gt 0) {
+        Start-Sleep -Milliseconds 300
+    }
+
+    foreach ($job in $jobs) {
+        $results += Receive-Job -Job $job
+        Remove-Job -Job $job
+    }
+
+    return $results
+}
+
+$bscan.Add_Click({
+    if ($lb.SelectedItems.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Select computers first.")
+        return
+    }
+    $dgv.Rows.Clear()
+    $selectedPCs = $lb.SelectedItems
+    $maxJobs = [int]$cmbThreads.SelectedItem
+    $pg.Maximum = $selectedPCs.Count
+    $pg.Value = 0
+    $lbl.Text = "Status: Scanning in parallel..."
+    [System.Windows.Forms.Application]::DoEvents()
+
+    $res = Invoke-ParallelExecution -computers $selectedPCs -isScanMode $true -wTemp $c1.Checked -uTemp $c2.Checked -rBin $c3.Checked -updCache $c4.Checked -maxJobs $maxJobs
+
+    foreach ($r in $res) {
+        $dgv.Rows.Add($r.Computer, $r.Mode, "$($r.WT) MB", "$($r.UT) MB", "$($r.RB) MB", "$($r.UC) MB", "$($r.Total) MB", $r.Deleted, $r.Failed, $r.Status, $r.Details)
+    }
+    $pg.Value = $pg.Maximum
+    $lbl.Text = "Status: Scan Complete!"
+})
+
+$bclean.Add_Click({
+    if ($lb.SelectedItems.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Select computers first.")
+        return
+    }
+    if ([System.Windows.Forms.MessageBox]::Show("Start cleaning selected computers?", "Confirm", [System.Windows.Forms.MessageBoxButtons]::YesNo) -ne [System.Windows.Forms.DialogResult]::Yes) {
+        return
+    }
+    $dgv.Rows.Clear()
+    $selectedPCs = $lb.SelectedItems
+    $maxJobs = [int]$cmbThreads.SelectedItem
+    $pg.Maximum = $selectedPCs.Count
+    $pg.Value = 0
+    $lbl.Text = "Status: Cleaning in parallel..."
+    [System.Windows.Forms.Application]::DoEvents()
+
+    $res = Invoke-ParallelExecution -computers $selectedPCs -isScanMode $false -wTemp $c1.Checked -uTemp $c2.Checked -rBin $c3.Checked -updCache $c4.Checked -maxJobs $maxJobs
+
+    foreach ($r in $res) {
+        $dgv.Rows.Add($r.Computer, $r.Mode, "$($r.WT) MB", "$($r.UT) MB", "$($r.RB) MB", "$($r.UC) MB", "$($r.Total) MB", $r.Deleted, $r.Failed, $r.Status, $r.Details)
+    }
+    $pg.Value = $pg.Maximum
+    $lbl.Text = "Status: Cleanup Complete!"
+    [System.Windows.Forms.MessageBox]::Show("Parallel cleanup finished.", "Done")
+})
+
+[void]$f.ShowDialog()
