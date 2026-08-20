@@ -1,0 +1,454 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.DirectoryServices
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Send Message Tool"
+$form.Size = New-Object System.Drawing.Size(700, 520)
+$form.StartPosition = "CenterScreen"
+$form.BackColor = [System.Drawing.Color]::White
+$form.MinimumSize = New-Object System.Drawing.Size(650, 460)
+
+$script:AllComputers = @()
+$script:CurrentLog = @()
+$script:IsLoading = $false
+
+$mainPanel = New-Object System.Windows.Forms.Panel
+$mainPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$mainPanel.Padding = New-Object System.Windows.Forms.Padding(8)
+$form.Controls.Add($mainPanel)
+
+$lblTitle = New-Object System.Windows.Forms.Label
+$lblTitle.Text = "Send Message Tool"
+$lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+$lblTitle.Size = New-Object System.Drawing.Size(250, 30)
+$lblTitle.Location = New-Object System.Drawing.Point(10, 5)
+$mainPanel.Controls.Add($lblTitle)
+
+# --- قسم اختيار الـ OU ---
+$lblOU = New-Object System.Windows.Forms.Label
+$lblOU.Text = "OU:"
+$lblOU.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$lblOU.Size = New-Object System.Drawing.Size(30, 20)
+$lblOU.Location = New-Object System.Drawing.Point(10, 42)
+$mainPanel.Controls.Add($lblOU)
+
+$cmbOU = New-Object System.Windows.Forms.ComboBox
+$cmbOU.Size = New-Object System.Drawing.Size(200, 23)
+$cmbOU.Location = New-Object System.Drawing.Point(40, 40)
+$cmbOU.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$cmbOU.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+$mainPanel.Controls.Add($cmbOU)
+
+$btnLoadOU = New-Object System.Windows.Forms.Button
+$btnLoadOU.Text = "Load OU"
+$btnLoadOU.Size = New-Object System.Drawing.Size(75, 23)
+$btnLoadOU.Location = New-Object System.Drawing.Point(245, 39)
+$btnLoadOU.BackColor = [System.Drawing.Color]::FromArgb(52, 152, 219)
+$btnLoadOU.ForeColor = [System.Drawing.Color]::White
+$btnLoadOU.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnLoadOU.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnLoadOU)
+
+$btnRefresh = New-Object System.Windows.Forms.Button
+$btnRefresh.Text = "Load All AD"
+$btnRefresh.Size = New-Object System.Drawing.Size(85, 23)
+$btnRefresh.Location = New-Object System.Drawing.Point(325, 39)
+$btnRefresh.BackColor = [System.Drawing.Color]::FromArgb(41, 128, 185)
+$btnRefresh.ForeColor = [System.Drawing.Color]::White
+$btnRefresh.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnRefresh.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnRefresh)
+
+# --- خانة البحث اللحظي ---
+$lblSearch = New-Object System.Windows.Forms.Label
+$lblSearch.Text = "Search:"
+$lblSearch.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$lblSearch.Size = New-Object System.Drawing.Size(50, 20)
+$lblSearch.Location = New-Object System.Drawing.Point(10, 78)
+$mainPanel.Controls.Add($lblSearch)
+
+$txtSearch = New-Object System.Windows.Forms.TextBox
+$txtSearch.Size = New-Object System.Drawing.Size(180, 23)
+$txtSearch.Location = New-Object System.Drawing.Point(58, 76)
+$txtSearch.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$mainPanel.Controls.Add($txtSearch)
+
+$btnPing = New-Object System.Windows.Forms.Button
+$btnPing.Text = "Ping"
+$btnPing.Size = New-Object System.Drawing.Size(65, 23)
+$btnPing.Location = New-Object System.Drawing.Point(245, 75)
+$btnPing.BackColor = [System.Drawing.Color]::FromArgb(46, 204, 113)
+$btnPing.ForeColor = [System.Drawing.Color]::White
+$btnPing.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnPing.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnPing)
+
+$btnClear = New-Object System.Windows.Forms.Button
+$btnClear.Text = "Clear"
+$btnClear.Size = New-Object System.Drawing.Size(65, 23)
+$btnClear.Location = New-Object System.Drawing.Point(315, 75)
+$btnClear.BackColor = [System.Drawing.Color]::FromArgb(231, 76, 60)
+$btnClear.ForeColor = [System.Drawing.Color]::White
+$btnClear.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnClear.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnClear)
+
+$lblComputers = New-Object System.Windows.Forms.Label
+$lblComputers.Text = "Computers (Ctrl+Click for multiple):"
+$lblComputers.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$lblComputers.Size = New-Object System.Drawing.Size(230, 20)
+$lblComputers.Location = New-Object System.Drawing.Point(10, 110)
+$mainPanel.Controls.Add($lblComputers)
+
+$listComputers = New-Object System.Windows.Forms.ListBox
+$listComputers.Size = New-Object System.Drawing.Size(420, 140)
+$listComputers.Location = New-Object System.Drawing.Point(10, 133)
+$listComputers.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$listComputers.SelectionMode = [System.Windows.Forms.SelectionMode]::MultiExtended
+$mainPanel.Controls.Add($listComputers)
+
+$btnRemove = New-Object System.Windows.Forms.Button
+$btnRemove.Text = "Remove Selected"
+$btnRemove.Size = New-Object System.Drawing.Size(100, 23)
+$btnRemove.Location = New-Object System.Drawing.Point(440, 133)
+$btnRemove.BackColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
+$btnRemove.ForeColor = [System.Drawing.Color]::White
+$btnRemove.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnRemove.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnRemove)
+
+$btnRemoveAll = New-Object System.Windows.Forms.Button
+$btnRemoveAll.Text = "Remove All"
+$btnRemoveAll.Size = New-Object System.Drawing.Size(100, 23)
+$btnRemoveAll.Location = New-Object System.Drawing.Point(440, 163)
+$btnRemoveAll.BackColor = [System.Drawing.Color]::FromArgb(192, 57, 43)
+$btnRemoveAll.ForeColor = [System.Drawing.Color]::White
+$btnRemoveAll.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnRemoveAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnRemoveAll)
+
+$btnSelectAll = New-Object System.Windows.Forms.Button
+$btnSelectAll.Text = "Select All"
+$btnSelectAll.Size = New-Object System.Drawing.Size(75, 23)
+$btnSelectAll.Location = New-Object System.Drawing.Point(10, 280)
+$btnSelectAll.BackColor = [System.Drawing.Color]::FromArgb(52, 152, 219)
+$btnSelectAll.ForeColor = [System.Drawing.Color]::White
+$btnSelectAll.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnSelectAll.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnSelectAll)
+
+$btnClearSel = New-Object System.Windows.Forms.Button
+$btnClearSel.Text = "Clear"
+$btnClearSel.Size = New-Object System.Drawing.Size(75, 23)
+$btnClearSel.Location = New-Object System.Drawing.Point(90, 280)
+$btnClearSel.BackColor = [System.Drawing.Color]::FromArgb(149, 165, 166)
+$btnClearSel.ForeColor = [System.Drawing.Color]::White
+$btnClearSel.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnClearSel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnClearSel)
+
+$btnInvert = New-Object System.Windows.Forms.Button
+$btnInvert.Text = "Invert"
+$btnInvert.Size = New-Object System.Drawing.Size(75, 23)
+$btnInvert.Location = New-Object System.Drawing.Point(170, 280)
+$btnInvert.BackColor = [System.Drawing.Color]::FromArgb(155, 89, 182)
+$btnInvert.ForeColor = [System.Drawing.Color]::White
+$btnInvert.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnInvert.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnInvert)
+
+$lblCount = New-Object System.Windows.Forms.Label
+$lblCount.Text = "Selected: 0 / Total: 0"
+$lblCount.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$lblCount.Size = New-Object System.Drawing.Size(180, 23)
+$lblCount.Location = New-Object System.Drawing.Point(255, 281)
+$lblCount.ForeColor = [System.Drawing.Color]::FromArgb(44, 62, 80)
+$mainPanel.Controls.Add($lblCount)
+
+$lblMessage = New-Object System.Windows.Forms.Label
+$lblMessage.Text = "Message:"
+$lblMessage.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$lblMessage.Size = New-Object System.Drawing.Size(60, 20)
+$lblMessage.Location = New-Object System.Drawing.Point(10, 315)
+$mainPanel.Controls.Add($lblMessage)
+
+$txtMessage = New-Object System.Windows.Forms.TextBox
+$txtMessage.Text = "Hello, this is a test message"
+$txtMessage.Size = New-Object System.Drawing.Size(300, 23)
+$txtMessage.Location = New-Object System.Drawing.Point(70, 313)
+$txtMessage.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$mainPanel.Controls.Add($txtMessage)
+
+$btnSend = New-Object System.Windows.Forms.Button
+$btnSend.Text = "Send"
+$btnSend.Size = New-Object System.Drawing.Size(80, 28)
+$btnSend.Location = New-Object System.Drawing.Point(380, 310)
+$btnSend.BackColor = [System.Drawing.Color]::FromArgb(39, 174, 96)
+$btnSend.ForeColor = [System.Drawing.Color]::White
+$btnSend.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnSend.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnSend)
+
+$btnExport = New-Object System.Windows.Forms.Button
+$btnExport.Text = "Export Log"
+$btnExport.Size = New-Object System.Drawing.Size(80, 28)
+$btnExport.Location = New-Object System.Drawing.Point(380, 342)
+$btnExport.BackColor = [System.Drawing.Color]::FromArgb(243, 156, 18)
+$btnExport.ForeColor = [System.Drawing.Color]::White
+$btnExport.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnExport.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$mainPanel.Controls.Add($btnExport)
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Size = New-Object System.Drawing.Size(460, 16)
+$progressBar.Location = New-Object System.Drawing.Point(10, 390)
+$progressBar.Visible = $false
+$mainPanel.Controls.Add($progressBar)
+
+$statusBar = New-Object System.Windows.Forms.StatusStrip
+$statusLabel = New-Object System.Windows.Forms.ToolStripStatusLabel
+$statusLabel.Text = "Ready"
+$statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
+$statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$statusBar.Items.Add($statusLabel)
+
+$statusCount2 = New-Object System.Windows.Forms.ToolStripStatusLabel
+$statusCount2.Text = ""
+$statusCount2.ForeColor = [System.Drawing.Color]::Gray
+$statusCount2.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$statusCount2.Spring = $true
+$statusBar.Items.Add($statusCount2)
+
+$form.Controls.Add($statusBar)
+
+function Update-Counters {
+    $selected = $listComputers.SelectedItems.Count
+    $total = $listComputers.Items.Count
+    $lblCount.Text = "Selected: $selected / Total: $total"
+    $statusCount2.Text = "Selected: $selected"
+}
+
+function Load-OUs {
+    try {
+        $cmbOU.Items.Clear()
+        $cmbOU.Items.Add("-- Select OU --")
+        $ous = Get-ADOrganizationalUnit -Filter * -Properties Name, DistinguishedName | Sort-Object Name
+        foreach ($ou in $ous) {
+            $cmbOU.Items.Add("$($ou.Name)||$($ou.DistinguishedName)")
+        }
+        $cmbOU.SelectedIndex = 0
+    }
+    catch {
+        $statusLabel.Text = "Failed to load OUs"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Orange
+    }
+}
+
+function Load-ComputersFromAD {
+    if ($script:IsLoading) { return }
+    $script:IsLoading = $true
+    $statusLabel.Text = "Loading all computers from AD..."
+    $statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
+    $listComputers.Items.Clear()
+    try {
+        $computers = Get-ADComputer -Filter * -Properties Name | Select-Object Name
+        $script:AllComputers = $computers
+        foreach ($pc in $computers | Sort-Object Name) {
+            $listComputers.Items.Add("$($pc.Name)")
+        }
+        $statusLabel.Text = "Loaded $($listComputers.Items.Count) computers"
+        $statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
+        Update-Counters
+    }
+    catch {
+        $statusLabel.Text = "Error: RSAT required"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+    }
+    $script:IsLoading = $false
+}
+
+function Load-ComputersFromOU {
+    if ($cmbOU.SelectedItem -eq $null -or $cmbOU.SelectedItem -eq "-- Select OU --") {
+        [System.Windows.Forms.MessageBox]::Show("Please select an OU first", "Warning")
+        return
+    }
+    $selectedOU = $cmbOU.SelectedItem
+    $ouParts = $selectedOU -split '\|\|'
+    $ouDN = $ouParts[1]
+    
+    $statusLabel.Text = "Loading OU..."
+    $statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
+    try {
+        $computers = Get-ADComputer -Filter * -SearchBase $ouDN -Properties Name | Select-Object Name
+        $listComputers.Items.Clear()
+        $script:AllComputers = $computers
+        foreach ($pc in $computers | Sort-Object Name) {
+            $listComputers.Items.Add("$($pc.Name)")
+        }
+        $statusLabel.Text = "Loaded $($listComputers.Items.Count) from OU"
+        $statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
+        Update-Counters
+    }
+    catch {
+        $statusLabel.Text = "Failed to load OU"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+    }
+}
+
+function Search-Computers {
+    $searchText = $txtSearch.Text.Trim()
+    if ($script:AllComputers.Count -eq 0) { return }
+
+    $listComputers.Items.Clear()
+    
+    if ([string]::IsNullOrEmpty($searchText)) {
+        foreach ($pc in $script:AllComputers | Sort-Object Name) {
+            $listComputers.Items.Add("$($pc.Name)")
+        }
+    } else {
+        $filtered = $script:AllComputers | Where-Object { $_.Name -match "^$([regex]::Escape($searchText))" }
+        foreach ($pc in $filtered | Sort-Object Name) {
+            $listComputers.Items.Add("$($pc.Name)")
+        }
+    }
+    Update-Counters
+}
+
+function Ping-Computers {
+    if ($listComputers.Items.Count -eq 0) { return }
+    $progressBar.Visible = $true
+    $statusLabel.Text = "Pinging..."
+    $total = $listComputers.Items.Count
+    for ($i = 0; $i -lt $total; $i++) {
+        $progressBar.Value = [Math]::Min(100, [int]((($i + 1) / $total) * 100))
+        $itemText = $listComputers.Items[$i]
+        $pcName = ($itemText -replace '\s*\(Online\)', '' -replace '\s*\(Offline\)', '').Trim()
+        
+        $ping = Test-Connection -ComputerName $pcName -Count 1 -Quiet -ErrorAction SilentlyContinue
+        if ($ping) {
+            $listComputers.Items[$i] = "$pcName (Online)"
+        } else {
+            $listComputers.Items[$i] = "$pcName (Offline)"
+        }
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    $progressBar.Visible = $false
+    $statusLabel.Text = "Ping done"
+    Update-Counters
+}
+
+function Clear-Filters {
+    $txtSearch.Text = ""
+    if ($script:AllComputers.Count -gt 0) {
+        $listComputers.Items.Clear()
+        foreach ($pc in $script:AllComputers | Sort-Object Name) {
+            $listComputers.Items.Add("$($pc.Name)")
+        }
+    }
+    Update-Counters
+}
+
+function Remove-SelectedComputers {
+    if ($listComputers.SelectedItems.Count -eq 0) { return }
+    $selectedItems = @()
+    foreach ($item in $listComputers.SelectedItems) { $selectedItems += $item }
+    foreach ($item in $selectedItems) { $listComputers.Items.Remove($item) }
+    
+    $script:AllComputers = @()
+    foreach ($item in $listComputers.Items) {
+        $pcName = ($item -replace '\s*\(Online\)', '' -replace '\s*\(Offline\)', '').Trim()
+        $script:AllComputers += [PSCustomObject]@{ Name = $pcName }
+    }
+    Update-Counters
+}
+
+function Remove-AllComputers {
+    $listComputers.Items.Clear()
+    $script:AllComputers = @()
+    Update-Counters
+}
+
+function Send-Messages {
+    $selected = $listComputers.SelectedItems
+    if ($selected.Count -eq 0) { return }
+    $message = $txtMessage.Text.Trim()
+    if ([string]::IsNullOrEmpty($message)) { return }
+    
+    $progressBar.Visible = $true
+    $btnSend.Enabled = $false
+    $statusLabel.Text = "Sending messages asynchronously..."
+    $statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
+    
+    $total = $selected.Count
+    $success = 0
+    $logEntries = @()
+    $i = 0
+    
+    foreach ($selItem in $selected) {
+        $i++
+        $progressBar.Value = [Math]::Min(100, [int]((($i) / $total) * 100))
+        $pcName = ($selItem -replace '\s*\(Online\)', '' -replace '\s*\(Offline\)', '').Trim()
+        $logEntry = [PSCustomObject]@{ Computer = $pcName; Time = Get-Date -Format "HH:mm:ss"; Result = "Failed"; Reason = "" }
+        
+        $job = Start-Job -ScriptBlock {
+            param($targetPC, $msgText)
+            try {
+                $session = New-CimSession -ComputerName $targetPC -OperationTimeoutSec 5 -ErrorAction Stop
+                $result = Invoke-CimMethod -CimSession $session -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = "cmd.exe /c msg * /time:0 `"From: IT Administrator - $msgText`"" } -ErrorAction Stop
+                Remove-CimSession -CimSession $session
+                if ($result.ReturnValue -eq 0) { return $true }
+            } catch {
+                try {
+                    $res = Invoke-Command -ComputerName $targetPC -ScriptBlock {
+                        param($m)
+                        $exp = Get-Process explorer -ErrorAction SilentlyContinue | Select-Object -First 1
+                        if ($exp) {
+                            $def = @'
+                            using System;
+                            using System.Runtime.InteropServices;
+                            public class MsgBox {
+                                [DllImport("user32.dll")]
+                                public static extern IntPtr MessageBoxTimeout(IntPtr hWnd, String text, String caption, uint type, ushort languageId, uint milliseconds);
+                                public static void Show(string message, string title) {
+                                    MessageBoxTimeout(IntPtr.Zero, message, title, 0x00000040 | 0x00000000, 0, 0xFFFFFFFF);
+                                }
+                            }
+'@
+                            Add-Type -TypeDefinition $def -ErrorAction SilentlyContinue
+                            [MsgBox]::Show("From: IT Administrator`n`n$m", "IT Administrator Message")
+                            return $true
+                        }
+                        return $false
+                    } -ArgumentList $msgText -ErrorAction Stop
+                    if ($res) { return $true }
+                } catch {}
+            }
+            return $false
+        } -ArgumentList $pcName, $message
+        
+        $completed = Wait-Job $job -Timeout 4
+        if ($completed) {
+            $jobResult = Receive-Job -Job $job
+            Remove-Job -Job $job -Force
+            if ($jobResult) {
+                $success++
+                $logEntry.Result = "Success"
+                $logEntry.Reason = "Message delivered"
+            } else {
+                $logEntry.Reason = "No active user session or unreachable"
+            }
+        } else {
+            Stop-Job -Job $job -Force
+            Remove-Job -Job $job -Force
+            $logEntry.Reason = "Connection Timeout"
+        }
+        
+        $logEntries += $logEntry
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    
+    $progressBar.Visible = $false
+    $btnSend.Enabled = $true
+    $statusLabel.Text = "Done - Success: $success of $total"
+    $statusLabel.ForeColor = [Sys
