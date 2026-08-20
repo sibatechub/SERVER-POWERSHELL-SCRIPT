@@ -1,0 +1,74 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Add your USB brands here to avoid false positives from internal devices
+$TrustedBrands = @("SanDisk", "Kingston", "Samsung", "Transcend", "Toshiba", "Lexar", "Sony", "Adata", "PNY", "Verbatim", "Crucial", "Seagate")
+$KnownDevices = @{}
+
+function Show-AlertWindow ($Comp, $User, $USB) {
+    $AlertForm = New-Object System.Windows.Forms.Form
+    $AlertForm.Text = "Security Alert"
+    $AlertForm.Size = New-Object System.Drawing.Size(420, 260)
+    $AlertForm.StartPosition = 'CenterScreen'
+    $AlertForm.TopMost = $true
+
+    $LabelTitle = New-Object System.Windows.Forms.Label
+    $LabelTitle.Text = "⚠️ New USB Drive Detected"
+    $LabelTitle.Font = New-Object System.Drawing.Font("Arial", 12, [System.Drawing.FontStyle]::Bold)
+    $LabelTitle.Location = New-Object System.Drawing.Point(20, 20)
+    $LabelTitle.AutoSize = $true
+    $AlertForm.Controls.Add($LabelTitle)
+
+    $Message = "Computer Name: $Comp`nCurrent User: $User`nDevice Name: $USB"
+    $LabelBody = New-Object System.Windows.Forms.Label
+    $LabelBody.Text = $Message
+    $LabelBody.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+    $LabelBody.Location = New-Object System.Drawing.Point(20, 60)
+    $LabelBody.Size = New-Object System.Drawing.Size(370, 100)
+    $AlertForm.Controls.Add($LabelBody)
+
+    $BtnClose = New-Object System.Windows.Forms.Button
+    $BtnClose.Text = "Dismiss"
+    $BtnClose.Location = New-Object System.Drawing.Point(140, 170)
+    $BtnClose.Size = New-Object System.Drawing.Size(120, 35)
+    $BtnClose.Add_Click({ $AlertForm.Close() })
+    $AlertForm.Controls.Add($BtnClose)
+
+    [System.Console]::Beep(800, 500)
+    $AlertForm.ShowDialog()
+}
+
+Write-Host "Monitoring USB connections... Press Ctrl+C to stop." -ForegroundColor Cyan
+
+while ($true) {
+    $Computers = Get-ADComputer -Filter 'OperatingSystem -like "*Windows*"' | Select-Object -ExpandProperty Name
+    
+    foreach ($Comp in $Computers) {
+        $Details = Invoke-Command -ComputerName $Comp -ScriptBlock {
+            $Devices = Get-PnpDevice | Where-Object {$_.InstanceId -like "*USBSTOR*" -and $_.Status -eq 'OK'}
+            $FoundUSB = $null
+            foreach ($Dev in $Devices) {
+                foreach ($Brand in $Using:TrustedBrands) {
+                    if ($Dev.FriendlyName -like "*$Brand*") {
+                        $FoundUSB = $Dev.FriendlyName
+                        break
+                    }
+                }
+            }
+            $User = (Get-WmiObject -Class Win32_ComputerSystem).UserName
+            return [PSCustomObject]@{USB = $FoundUSB; User = $User}
+        } -ErrorAction SilentlyContinue
+
+        if ($Details.USB) {
+            $Key = "$Comp-$($Details.USB)"
+            if (-not $KnownDevices.ContainsKey($Key)) {
+                $KnownDevices[$Key] = $true
+                Show-AlertWindow -Comp $Comp -User $Details.User -USB $Details.USB
+            }
+        } else {
+            $KeysToRemove = $KnownDevices.Keys | Where-Object { $_ -like "$Comp-*" }
+            foreach ($k in $KeysToRemove) { $KnownDevices.Remove($k) }
+        }
+    }
+    Start-Sleep -Seconds 20
+}
