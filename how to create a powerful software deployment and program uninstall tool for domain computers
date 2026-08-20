@@ -1,0 +1,113 @@
+Import-Module ActiveDirectory; Add-Type -AssemblyName System.Windows.Forms,System.Drawing,Microsoft.VisualBasic
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Enterprise Software Deployment Tool"; $form.Size = New-Object System.Drawing.Size(1000,650)
+$form.StartPosition = "CenterScreen"; $form.BackColor = [System.Drawing.Color]::White
+
+$header = New-Object System.Windows.Forms.Label
+$header.Text = "DOMAIN SOFTWARE DEPLOYMENT & UNINSTALL CENTER"; $header.Font = New-Object System.Drawing.Font("Segoe UI",16,[System.Drawing.FontStyle]::Bold)
+$header.ForeColor = [System.Drawing.Color]::White; $header.BackColor = [System.Drawing.Color]::FromArgb(45,45,48)
+$header.TextAlign = "MiddleCenter"; $header.Size = New-Object System.Drawing.Size(1000,50); $header.Location = New-Object System.Drawing.Point(0,0)
+
+$panelLeft = New-Object System.Windows.Forms.Panel; $panelLeft.Size = New-Object System.Drawing.Size(300,550); $panelLeft.Location = New-Object System.Drawing.Point(10,70); $panelLeft.BackColor = [System.Drawing.Color]::FromArgb(240,240,240)
+$labelPC = New-Object System.Windows.Forms.Label; $labelPC.Text = "Domain"; $labelPC.Font = New-Object System.Drawing.Font("Segoe UI",11,[System.Drawing.FontStyle]::Bold); $labelPC.Location = New-Object System.Drawing.Point(10,12); $labelPC.Size = New-Object System.Drawing.Size(100,25)
+
+$selectAllBtn = New-Object System.Windows.Forms.Button; $selectAllBtn.Text = "Select All"; $selectAllBtn.Size = New-Object System.Drawing.Size(85,25); $selectAllBtn.Location = New-Object System.Drawing.Point(205,10); $selectAllBtn.BackColor = [System.Drawing.Color]::FromArgb(0,120,215); $selectAllBtn.ForeColor = "White"; $selectAllBtn.FlatStyle = "Flat"; $selectAllBtn.Font = New-Object System.Drawing.Font("Segoe UI",8,[System.Drawing.FontStyle]::Bold)
+$list = New-Object System.Windows.Forms.ListBox; $list.Size = New-Object System.Drawing.Size(280,500); $list.Location = New-Object System.Drawing.Point(10,40); $list.SelectionMode = "MultiExtended"
+
+$selectAllBtn.Add_Click({ for ($i = 0; $i -lt $list.Items.Count; $i++) { $list.SetSelected($i, $true) } })
+
+try { $computers = Get-ADComputer -Filter * | Select-Object -Expand Name; foreach ($c in $computers) { [void]$list.Items.Add($c) } } catch { [System.Windows.Forms.MessageBox]::Show("AD Connection Error") }
+
+$panelRight = New-Object System.Windows.Forms.Panel; $panelRight.Size = New-Object System.Drawing.Size(650,550); $panelRight.Location = New-Object System.Drawing.Point(320,70); $panelRight.BackColor = [System.Drawing.Color]::White
+$fileBox = New-Object System.Windows.Forms.TextBox; $fileBox.Size = New-Object System.Drawing.Size(450,25); $fileBox.Location = New-Object System.Drawing.Point(10,20); $fileBox.Text = "\\Server\Software\app.msi"
+
+$browse = New-Object System.Windows.Forms.Button; $browse.Text = "Browse"; $browse.Size = New-Object System.Drawing.Size(120,25); $browse.Location = New-Object System.Drawing.Point(470,20); $browse.BackColor = [System.Drawing.Color]::FromArgb(0,120,215); $browse.ForeColor = "White"
+$browse.Add_Click({ $dlg = New-Object System.Windows.Forms.OpenFileDialog; $dlg.Filter = "Installers (*.msi;*.exe)|*.msi;*.exe"; if ($dlg.ShowDialog() -eq "OK") { $fileBox.Text = $dlg.FileName } })
+
+$install = New-Object System.Windows.Forms.Button; $install.Text = "INSTALL SELECTED"; $install.Size = New-Object System.Drawing.Size(140,40); $install.Location = New-Object System.Drawing.Point(10,60); $install.BackColor = [System.Drawing.Color]::FromArgb(0,150,0); $install.ForeColor = "White"; $install.FlatStyle = "Flat"; $install.Font = New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)
+$loadApps = New-Object System.Windows.Forms.Button; $loadApps.Text = "LOAD APPS"; $loadApps.Size = New-Object System.Drawing.Size(140,40); $loadApps.Location = New-Object System.Drawing.Point(160,60); $loadApps.BackColor = [System.Drawing.Color]::FromArgb(0,120,215); $loadApps.ForeColor = "White"; $loadApps.FlatStyle = "Flat"; $loadApps.Font = New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)
+$uninstall = New-Object System.Windows.Forms.Button; $uninstall.Text = "UNINSTALL APP"; $uninstall.Size = New-Object System.Drawing.Size(140,40); $uninstall.Location = New-Object System.Drawing.Point(310,60); $uninstall.BackColor = [System.Drawing.Color]::FromArgb(204,0,0); $uninstall.ForeColor = "White"; $uninstall.FlatStyle = "Flat"; $uninstall.Font = New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)
+
+$log = New-Object System.Windows.Forms.TextBox; $log.Size = New-Object System.Drawing.Size(620,420); $log.Location = New-Object System.Drawing.Point(10,120); $log.Multiline = $true; $log.ScrollBars = "Vertical"; $log.Font = New-Object System.Drawing.Font("Consolas",9); $log.BackColor = [System.Drawing.Color]::Black; $log.ForeColor = [System.Drawing.Color]::Lime
+$global:log = $log
+
+function Install-App { 
+    param($Computer, $Installer) 
+    try { 
+        if (-not (Test-Connection $Computer -Count 1 -Quiet)) { $global:log.AppendText("[$Computer] OFFLINE`r`n"); return }; 
+        $global:log.AppendText("[$Computer] Connecting for Installation...`r`n"); $form.Refresh(); 
+        $remote = "\\$Computer\C$\Temp"; if (!(Test-Path $remote)) { New-Item $remote -ItemType Directory -Force | Out-Null }; 
+        $file = Split-Path $Installer -Leaf; Copy-Item $Installer "$remote\$file" -Force; $ext = [System.IO.Path]::GetExtension($Installer).ToLower(); 
+        Invoke-Command -ComputerName $Computer -ScriptBlock { 
+            param($file,$ext) $path = "C:\Temp\$file"; 
+            if ($ext -eq ".msi") { 
+                Start-Process "msiexec.exe" -ArgumentList "/i $path /qn /norestart" -Wait 
+            } else { 
+                if ($file -like "*anydesk*") {
+                    Start-Process $path -ArgumentList '--install "C:\Program Files (x86)\AnyDesk" --with-silent-install' -Wait
+                } elseif ($file -like "*chrome*") {
+                    Start-Process $path -ArgumentList '/silent /install' -Wait
+                } else {
+                    Start-Process $path -ArgumentList "/S /quiet /silent /verysilent" -Wait 
+                }
+            } 
+        } -ArgumentList $file,$ext; $global:log.AppendText("[$Computer] INSTALL SUCCESS`r`n") 
+    } catch { $global:log.AppendText("[$Computer] INSTALL ERROR: $($_.Exception.Message)`r`n") } 
+}
+
+function Get-InstalledApps { 
+    param($Computer) 
+    $regPaths = @("HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*","HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*","HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"); 
+    Invoke-Command -ComputerName $Computer -ArgumentList (,$regPaths) -ScriptBlock { Get-ItemProperty $args[0] -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object DisplayName } 
+}
+
+function Uninstall-App { 
+    param($Computer, $AppName) 
+    $global:log.AppendText("[$Computer] Scanning & Uninstalling: $AppName...`r`n"); $form.Refresh(); 
+    try { 
+        if (-not (Test-Connection $Computer -Count 1 -Quiet)) { return "OFFLINE" }; 
+        $result = Invoke-Command -ComputerName $Computer -ArgumentList $AppName -ScriptBlock { 
+            $name = $args[0]; 
+            $regPaths = @("HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*","HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*","HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"); 
+            $app = Get-ItemProperty $regPaths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like "*$name*" } | Select-Object -First 1; 
+            if ($app) { 
+                $unstring = $app.UninstallString; $displayName = $app.DisplayName; $registryPath = $app.PSPath; 
+                if ($unstring -match "MsiExec") { 
+                    $proc = Start-Process "msiexec.exe" -ArgumentList "/x $($app.PSChildName) /qn /norestart" -Wait -PassThru; 
+                    if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) { return "SUCCESS (MSI Uninstalled)" } 
+                }; 
+                if ($unstring -match '^"([^"]+)"\s*(.*)$') { $exe = $Matches[1] } elseif ($unstring -match '^(.*?\.exe)\s*(.*)$') { $exe = $Matches[1].Trim() } else { $exe = $unstring.Split(' ')[0] }; 
+                $exe = $exe.Replace('"', ''); 
+                if (Test-Path $exe) { 
+                    $silentSwitches = @("--uninstall --force-uninstall --system-level","/VERYSILENT /SUPPRESSMSGBOXES /NORESTART","/S","/silent /quiet /qn /norestart"); 
+                    foreach ($switches in $silentSwitches) { 
+                        $proc = Start-Process -FilePath $exe -ArgumentList $switches -PassThru -ErrorAction SilentlyContinue; 
+                        $timeout = 10; $elapsed = 0; 
+                        while (!$proc.HasExited -and $elapsed -lt $timeout) { Start-Sleep -Seconds 2; $elapsed += 2 }; 
+                        if ($proc.HasExited) { 
+                            $check = Get-ItemProperty $regPaths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $displayName }; 
+                            if (!$check) { return "SUCCESS (Removed via arguments: $switches)" } 
+                        } else { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } 
+                    } 
+                }; 
+                if (Test-Path $exe) { 
+                    $installDir = Split-Path (Split-Path $exe -Parent) -Parent; 
+                    if ($installDir -match "Program Files|AppData|Google") { 
+                        $exeName = [System.IO.Path]::GetFileNameWithoutExtension($exe); 
+                        Stop-Process -Name $exeName -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; 
+                        Remove-Item -Path $installDir -Recurse -Force -ErrorAction SilentlyContinue 
+                    } 
+                }; 
+                Remove-Item -Path $registryPath -Force -ErrorAction SilentlyContinue; return "SUCCESS (Forced Uninstall Completed)" 
+            } else { return "NOT_FOUND_IN_REGISTRY" } 
+        }; return $result 
+    } catch { return "ERROR: $($_.Exception.Message)" } 
+}
+
+$install.Add_Click({ $installer = $fileBox.Text; $selected = $list.SelectedItems; if ($selected.Count -eq 0) { $log.AppendText("SELECT AT LEAST ONE COMPUTER FIRST`r`n"); return }; $log.AppendText("STARTING INSTALLATION...`r`n`r`n"); $form.Refresh(); foreach ($c in $selected) { Install-App -Computer $c -Installer $installer; $form.Refresh() }; $log.AppendText("ALL INSTALLATION TASKS DONE`r`n--------------------------------------------------`r`n") })
+$loadApps.Add_Click({ $pc = $list.SelectedItem; if (-not $pc) { $log.AppendText("SELECT A COMPUTER FIRST`r`n"); return }; $log.AppendText("LOADING APPS FROM $pc ...`r`n"); $form.Refresh(); try { $apps = Get-InstalledApps -Computer $pc; foreach ($a in $apps) { $log.AppendText("$($a.DisplayName)`r`n") }; $log.AppendText("DONE LOADING APPS`r`n--------------------------------------------------`r`n") } catch { $log.AppendText("[$pc] LOAD ERROR: $($_.Exception.Message)`r`n--------------------------------------------------`r`n") } })
+$uninstall.Add_Click({ $selected = $list.SelectedItems; if ($selected.Count -eq 0) { $log.AppendText("SELECT AT LEAST ONE COMPUTER FIRST`r`n"); return }; $appName = [Microsoft.VisualBasic.Interaction]::InputBox("Enter App Name to Uninstall:", "Unified Uninstall Tool"); if ($appName) { $log.AppendText("STARTING UNINSTALL PROCESS FOR: $appName ...`r`n`r`n"); $form.Refresh(); foreach ($c in $selected) { $res = Uninstall-App -Computer $c -AppName $appName; $log.AppendText("[$c] Uninstall Result: $res`r`n--------------------------------------------------`r`n"); $form.Refresh() }; $log.AppendText("ALL UNINSTALL TASKS DONE`r`n") } })
+
+$panelLeft.Controls.Add($labelPC); $panelLeft.Controls.Add($selectAllBtn); $panelLeft.Controls.Add($list)
+$panelRight.Controls.Add($fileBox); $panelRight.Controls.Add($browse); $panelRight.Controls.Add($install); $panelRight.Controls.Add($loadApps); $panelRight.Controls.Add($uninstall); $panelRight.Controls.Add($log)
+$form.Controls.Add($header); $form.Controls.Add($panelLeft); $form.Controls.Add($panelRight); $form.ShowDialog()
