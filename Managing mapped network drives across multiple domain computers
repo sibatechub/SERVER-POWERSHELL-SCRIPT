@@ -1,0 +1,220 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Remote Map Network Drive Manager"
+$form.Size = "550,710"
+$form.StartPosition = "CenterScreen"
+$form.FormBorderStyle = "FixedDialog"
+$form.MaximizeBox = $false
+
+$lblUser = New-Object System.Windows.Forms.Label; $lblUser.Text = "Search/Select User:"; $lblUser.Location = "20,15"; $lblUser.Width = 150; $form.Controls.Add($lblUser)
+$users = Get-ADUser -Filter 'Enabled -eq $true' -Properties Name | Select-Object -ExpandProperty Name
+$cbUsers = New-Object System.Windows.Forms.ComboBox; $cbUsers.Location = "20,35"; $cbUsers.Size = "490,30"; $cbUsers.AutoCompleteMode = "SuggestAppend"; $cbUsers.AutoCompleteSource = "ListItems"; $cbUsers.Items.AddRange($users); $form.Controls.Add($cbUsers)
+
+$lblComp = New-Object System.Windows.Forms.Label; $lblComp.Text = "Search/Select Target Computer:"; $lblComp.Location = "20,70"; $lblComp.Width = 200; $form.Controls.Add($lblComp)
+$computers = Get-ADComputer -Filter 'Enabled -eq $true' | Select-Object -ExpandProperty Name
+$cbComp = New-Object System.Windows.Forms.ComboBox; $cbComp.Location = "20,90"; $cbComp.Size = "490,30"; $cbComp.AutoCompleteMode = "SuggestAppend"; $cbComp.AutoCompleteSource = "ListItems"; $cbComp.Items.AddRange($computers); $form.Controls.Add($cbComp)
+
+$lblLetter = New-Object System.Windows.Forms.Label; $lblLetter.Text = "Drive Letter:"; $lblLetter.Location = "20,130"; $form.Controls.Add($lblLetter)
+$cbDrive = New-Object System.Windows.Forms.ComboBox; $cbDrive.Location = "20,150"; $cbDrive.Width = 90; $cbDrive.DropDownStyle = "DropDownList"
+$driveLetters = @("Folder") + ([char[]](65..90) | ForEach-Object { [string]$_ + ":" })
+$cbDrive.Items.AddRange($driveLetters); $cbDrive.SelectedIndex = 0; $form.Controls.Add($cbDrive)
+
+$lblPath = New-Object System.Windows.Forms.Label; $lblPath.Text = "UNC Path:"; $lblPath.Location = "125,130"; $lblPath.Width = 200; $form.Controls.Add($lblPath)
+$txtPath = New-Object System.Windows.Forms.TextBox; $txtPath.Location = "125,150"; $txtPath.Width = 280; $form.Controls.Add($txtPath)
+
+$dgv = New-Object System.Windows.Forms.DataGridView; $dgv.Location = "20,195"; $dgv.Size = "490,160"; $dgv.AllowUserToAddRows = $false; $dgv.SelectionMode = "FullRowSelect"; $dgv.MultiSelect = $false; $dgv.RowHeadersVisible = $false; $dgv.AutoSizeColumnsMode = "Fill"
+$colDrive = New-Object System.Windows.Forms.DataGridViewTextBoxColumn; $colDrive.HeaderText = "Map Network Letter"; $colDrive.Name = "Drive"; $colDrive.Width = 95
+$colPath = New-Object System.Windows.Forms.DataGridViewTextBoxColumn; $colPath.HeaderText = "Map Path"; $colPath.Name = "Path"
+
+$dgv.Columns.Add($colDrive) | Out-Null
+$dgv.Columns.Add($colPath) | Out-Null
+$form.Controls.Add($dgv)
+
+$btnAddList = New-Object System.Windows.Forms.Button; $btnAddList.Text = "Add Map Path"; $btnAddList.Location = "415,148"; $btnAddList.Width = 95
+$btnAddList.Add_Click({
+    if ([string]::IsNullOrWhiteSpace($txtPath.Text)) { return }
+    $dgv.Rows.Add($cbDrive.SelectedItem, $txtPath.Text) | Out-Null; $txtPath.Clear()
+})
+$form.Controls.Add($btnAddList)
+
+$btnDelList = New-Object System.Windows.Forms.Button; $btnDelList.Text = "Remove Map Network"; $btnDelList.Location = "20,365"; $btnDelList.Width = 140
+$btnDelList.Add_Click({ if ($dgv.SelectedRows.Count -gt 0) { $dgv.Rows.Remove($dgv.SelectedRows[0]) } })
+$form.Controls.Add($btnDelList)
+
+$lblLog = New-Object System.Windows.Forms.Label; $lblLog.Text = "Status Window:"; $lblLog.Location = "20,405"; $form.Controls.Add($lblLog)
+$txtLog = New-Object System.Windows.Forms.RichTextBox; $txtLog.Location = "20,425"; $txtLog.Size = "490,100"; $txtLog.ReadOnly = $true; $txtLog.BackColor = "Black"; $txtLog.ForeColor = "White"; $txtLog.Font = New-Object System.Drawing.Font("Consolas", 10)
+$form.Controls.Add($txtLog)
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = "20,535"
+$progressBar.Size = "490,15"
+$progressBar.Style = "Continuous"
+$progressBar.Minimum = 0
+$progressBar.Maximum = 100
+$progressBar.Value = 0
+$form.Controls.Add($progressBar)
+
+function Write-Log ($text, $color = "White") {
+    $txtLog.SelectionStart = $txtLog.TextLength
+    $txtLog.SelectionLength = 0
+    if ($color -eq "Green") { $txtLog.SelectionColor = [System.Drawing.Color]::LightGreen }
+    elseif ($color -eq "Red") { $txtLog.SelectionColor = [System.Drawing.Color]::Crimson }
+    else { $txtLog.SelectionColor = [System.Drawing.Color]::White }
+    $txtLog.AppendText("[" + (Get-Date -Format "HH:mm:ss") + "] " + $text + "`n")
+    $txtLog.ScrollToCaret()
+}
+
+$globalJob = $null
+$jobTimer = New-Object System.Windows.Forms.Timer; $jobTimer.Interval = 500
+$global:lastLogPath = ""
+
+$scriptBlock = {
+    param($computer, $driveData, $actionType)
+    
+    Write-Output "PROGRESS:10"
+    if (-not (Test-Connection -ComputerName $computer -Count 1 -Quiet)) {
+        Write-Output "LOG:CRITICAL: Computer $computer is Offline!:Red"
+        Write-Output "PROGRESS:0"
+        return
+    }
+
+    $logFolder = "C:\EnterpriseDriveManager_Logs"
+    if (-not (Test-Path $logFolder)) { New-Item -ItemType Directory -Path $logFolder -Force | Out-Null }
+    $logPath = "$logFolder\Execution_Report_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+    
+    $logContent = New-Object System.Text.StringBuilder
+    $logContent.AppendLine("====================================================") | Out-Null
+    $logContent.AppendLine("ENTERPRISE DRIVE MANAGER EXECUTION REPORT") | Out-Null
+    $logContent.AppendLine("Target Computer: $computer") | Out-Null
+    $logContent.AppendLine("Action: $actionType") | Out-Null
+    $logContent.AppendLine("====================================================") | Out-Null
+
+    try {
+        Write-Output "PROGRESS:30"
+        $activeSession = Get-CimInstance -ClassName Win32_LogonSession | Where-Object { $_.LogonType -eq 2 -or $_.LogonType -eq 10 } | Select-Object -First 1
+        $sessionId = if ($activeSession) { [int]$activeSession.SessionId } else { 1 }
+
+        $sb = New-Object System.Text.StringBuilder
+        
+        foreach ($drive in $driveData) { 
+            $target = $drive[0]
+            $path = $drive[1]
+            
+            if ($actionType -eq "Apply") {
+                if ($target -eq "Folder") {
+                    $sb.AppendLine("`$WshShell = New-Object -ComObject WScript.Shell; `$Shortcut = `$WshShell.CreateShortcut(`"`$env:AppData\Microsoft\Windows\Network Shortcuts\SharedFolder.lnk`"); `$Shortcut.TargetPath = `"$path`"; `$Shortcut.Save()") | Out-Null
+                } else {
+                    $sb.AppendLine("net use $target `"$path`" /persistent:yes") | Out-Null
+                }
+            }
+            elseif ($actionType -eq "Remove") {
+                if ($target -eq "Folder") {
+                    $sb.AppendLine("`$netLoc = `"`$env:AppData\Microsoft\Windows\Network Shortcuts`"") | Out-Null
+                    $sb.AppendLine("if (Test-Path `$netLoc) { Get-ChildItem `$netLoc -Filter '*.lnk' | ForEach-Object { `$sh = (New-Object -ComObject WScript.Shell).CreateShortcut(``$_.FullName); if (`$sh.TargetPath -like '*$($path.Replace('\','\\'))*') { Remove-Item `$_.FullName -Force } } }") | Out-Null
+                } else {
+                    $driveLetterClean = $target.Replace(':','')
+                    $sb.AppendLine("net use $target /delete /y 2>`$null") | Out-Null
+                    $sb.AppendLine("if (Test-Path 'HKCU:\Network\$driveLetterClean') { Remove-ItemProperty -Path 'HKCU:\Network\$driveLetterClean' -Name RemotePath -ErrorAction SilentlyContinue; Remove-Item 'HKCU:\Network\$driveLetterClean' -Force -ErrorAction SilentlyContinue }") | Out-Null
+                }
+            }
+        }
+        
+        $sb.AppendLine("`$type = ([AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { `$_.GetName().Name -eq 'Microsoft.PowerShell.Commands.Management' }).GetType('Microsoft.PowerShell.Commands.Internal.Win32Native')") | Out-Null
+        $sb.AppendLine("if (`$type) { `$method = `$type.GetMethod('SHChangeNotify', [Reflection.BindingFlags]'Static, Public, NonPublic') }") | Out-Null
+        $sb.AppendLine("if (`$method) { `$method.Invoke(`$null, @([int]0x08000000, [uint]0, [IntPtr]::Zero, [IntPtr]::Zero)) }") | Out-Null
+
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($sb.ToString()))
+        
+        Write-Output "PROGRESS:60"
+        
+        Invoke-Command -ComputerName $computer -ScriptBlock {
+            param($b64, $sessionId)
+            $taskName = "RemoteDriveTask_$(Get-Random)"
+            
+            $action = New-ScheduledTaskAction -Execute "conhost.exe" -Argument "--headless powershell.exe -NoProfile -WindowStyle Hidden -EncodedCommand $b64"
+            $principal = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users" -Id "CurrentUser"
+            
+            Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal | Out-Null
+            $taskService = New-Object -ComObject Schedule.Service
+            $taskService.Connect()
+            $rootFolder = $taskService.GetFolder("\")
+            $registeredTask = $rootFolder.GetTask($taskName)
+            
+            $registeredTask.RunEx($null, 0, [int]$sessionId, $null) | Out-Null
+            
+            Start-Sleep -Seconds 4
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+        } -ArgumentList $b64, $sessionId
+
+        Write-Output "PROGRESS:100"
+        $logContent.AppendLine("SUCCESS: Operations mapped") | Out-Null
+        Write-Output "LOG:Operation Completed Successfully!:Green"
+    } catch {
+        Write-Output "PROGRESS:0"
+        $logContent.AppendLine("FAILED: $($_.Exception.Message)") | Out-Null
+        Write-Output "LOG:Operation Failed! Check log file.:Red"
+    }
+
+    $logContent.ToString() | Out-File -FilePath $logPath -Encoding utf8
+    Write-Output "LOG:Log file generated at: $logPath:White"
+    Write-Output "PATH:$logPath"
+}
+
+function Start-ModernBackgroundJob ($actionType) {
+    $computer = $cbComp.Text
+    if ([string]::IsNullOrEmpty($computer)) { [System.Windows.Forms.MessageBox]::Show("Please select a Computer first.", "Error"); return }
+    
+    $driveData = @()
+    foreach ($row in $dgv.Rows) { $driveData += ,@($row.Cells["Drive"].Value, $row.Cells["Path"].Value) }
+    if ($driveData.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("The list is empty!", "Error"); return }
+
+    $txtLog.Clear()
+    $progressBar.Value = 0
+    Write-Log "Initializing Remote Session..." "White"
+    $btnApplyAll.Enabled = $false; $btnDisconnect.Enabled = $false
+
+    $global:globalJob = Start-Job -ScriptBlock $scriptBlock -ArgumentList $computer, $driveData, $actionType
+    $jobTimer.Start()
+}
+
+$jobTimer.Add_Tick({
+    if ($global:globalJob -ne $null) {
+        $streams = Receive-Job -Job $global:globalJob
+        foreach ($line in $streams) {
+            if ($line -like "LOG:*") {
+                $parts = $line.Substring(4) -split ":"
+                $logColor = "White"
+                if ($parts.Count -gt 1) { $logColor = $parts[1] }
+                Write-Log $parts[0] $logColor
+            }
+            elseif ($line -like "PROGRESS:*") {
+                $pct = [int]($line.Substring(9))
+                $progressBar.Value = $pct
+            }
+            elseif ($line -like "PATH:*") {
+                $global:lastLogPath = $line.Substring(5)
+            }
+        }
+        if ($global:globalJob.State -ne "Running") {
+            $jobTimer.Stop()
+            Remove-Job -Job $global:globalJob
+            $global:globalJob = $null
+            $btnApplyAll.Enabled = $true; $btnDisconnect.Enabled = $true
+            if (-not [string]::IsNullOrEmpty($global:lastLogPath) -and (Test-Path $global:lastLogPath)) {
+                Start-Process "notepad.exe" -ArgumentList $global:lastLogPath
+            }
+        }
+    }
+})
+
+$btnApplyAll = New-Object System.Windows.Forms.Button; $btnApplyAll.Text = "Connect Map Network"; $btnApplyAll.Location = "20,580"; $btnApplyAll.Size = "230,45"; $btnApplyAll.BackColor = "LightGreen"; $btnApplyAll.Font = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
+$btnApplyAll.Add_Click({ Start-ModernBackgroundJob "Apply" })
+$form.Controls.Add($btnApplyAll)
+
+$btnDisconnect = New-Object System.Windows.Forms.Button; $btnDisconnect.Text = "Disconnect Map Network"; $btnDisconnect.Location = "280,580"; $btnDisconnect.Size = "230,45"; $btnDisconnect.BackColor = "Crimson"; $btnDisconnect.ForeColor = "White"; $btnDisconnect.Font = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
+$btnDisconnect.Add_Click({ Start-ModernBackgroundJob "Remove" })
+$form.Controls.Add($btnDisconnect)
+
+$form.ShowDialog()
