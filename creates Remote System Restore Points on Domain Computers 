@@ -1,0 +1,116 @@
+& {
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+$Form = New-Object System.Windows.Forms.Form
+$Form.Text = "Advanced System Restore Manager"
+$Form.Size = New-Object System.Drawing.Size(450, 650)
+$Form.StartPosition = "CenterScreen"
+
+$AllComputers = Get-ADComputer -Filter 'OperatingSystem -like "*Windows*"' | Select-Object -ExpandProperty Name
+
+$ComboBox = New-Object System.Windows.Forms.ComboBox
+$ComboBox.Location = New-Object System.Drawing.Point(50, 30)
+$ComboBox.Size = New-Object System.Drawing.Size(300, 20)
+$ComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
+$ComboBox.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
+$ComboBox.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
+$ComboBox.DataSource = [System.Collections.ArrayList]$AllComputers
+$Form.Controls.Add($ComboBox)
+
+$LabelPart = New-Object System.Windows.Forms.Label
+$LabelPart.Text = "Select Partition:"
+$LabelPart.Location = New-Object System.Drawing.Point(50, 60)
+$Form.Controls.Add($LabelPart)
+
+$ComboPart = New-Object System.Windows.Forms.ComboBox
+$ComboPart.Location = New-Object System.Drawing.Point(150, 60)
+$ComboPart.Size = New-Object System.Drawing.Size(50, 20)
+$DriveLetters = 67..90 | ForEach-Object { [char]$_ + ":" }
+$ComboPart.Items.AddRange($DriveLetters)
+$ComboPart.SelectedIndex = 0
+$Form.Controls.Add($ComboPart)
+
+$BtnEnable = New-Object System.Windows.Forms.Button
+$BtnEnable.Text = "Enable"
+$BtnEnable.Location = New-Object System.Drawing.Point(50, 100)
+$BtnEnable.Size = New-Object System.Drawing.Size(140, 30)
+$BtnEnable.Add_Click({ 
+    $Drive = $ComboPart.SelectedItem
+    Invoke-Command -ComputerName $ComboBox.Text -ScriptBlock { param($d) Enable-ComputerRestore -Drive $d } -ArgumentList $Drive
+    [System.Windows.Forms.MessageBox]::Show("Enabled on $($ComboBox.Text) - Drive $Drive")
+})
+$Form.Controls.Add($BtnEnable)
+
+$BtnDisable = New-Object System.Windows.Forms.Button
+$BtnDisable.Text = "Disable"
+$BtnDisable.Location = New-Object System.Drawing.Point(210, 100)
+$BtnDisable.Size = New-Object System.Drawing.Size(140, 30)
+$BtnDisable.Add_Click({ 
+    $Drive = $ComboPart.SelectedItem
+    Invoke-Command -ComputerName $ComboBox.Text -ScriptBlock { param($d) Disable-ComputerRestore -Drive $d } -ArgumentList $Drive
+    [System.Windows.Forms.MessageBox]::Show("Disabled on $($ComboBox.Text) - Drive $Drive")
+})
+$Form.Controls.Add($BtnDisable)
+
+$txtName = New-Object System.Windows.Forms.TextBox
+$txtName.Location = New-Object System.Drawing.Point(50, 150)
+$txtName.Size = New-Object System.Drawing.Size(300, 20)
+$txtName.Text = "Manual Restore Point"
+$Form.Controls.Add($txtName)
+
+$BtnCreate = New-Object System.Windows.Forms.Button
+$BtnCreate.Text = "Create Restore Point"
+$BtnCreate.Location = New-Object System.Drawing.Point(50, 180)
+$BtnCreate.Size = New-Object System.Drawing.Size(300, 30)
+$BtnCreate.Add_Click({ 
+    $PointName = $txtName.Text
+    Invoke-Command -ComputerName $ComboBox.Text -ScriptBlock { 
+        param($Name)
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore" -Name "SystemRestorePointCreationFrequency" -Value 0
+        Checkpoint-Computer -Description $Name -RestorePointType "MODIFY_SETTINGS"
+    } -ArgumentList $PointName
+    [System.Windows.Forms.MessageBox]::Show("Restore Point Created!")
+})
+$Form.Controls.Add($BtnCreate)
+
+$ComboRestorePoints = New-Object System.Windows.Forms.ComboBox
+$ComboRestorePoints.Location = New-Object System.Drawing.Point(50, 240)
+$ComboRestorePoints.Size = New-Object System.Drawing.Size(300, 20)
+$Form.Controls.Add($ComboRestorePoints)
+
+$BtnLoadPoints = New-Object System.Windows.Forms.Button
+$BtnLoadPoints.Text = "Load Restore Points List"
+$BtnLoadPoints.Location = New-Object System.Drawing.Point(50, 270)
+$BtnLoadPoints.Size = New-Object System.Drawing.Size(300, 30)
+$BtnLoadPoints.Add_Click({
+    $Points = Invoke-Command -ComputerName $ComboBox.Text -ScriptBlock { Get-ComputerRestorePoint }
+    $ComboRestorePoints.Items.Clear()
+    if ($null -ne $Points) {
+        foreach ($Point in $Points) { $ComboRestorePoints.Items.Add($Point.Description) }
+    } else {
+        [System.Windows.Forms.MessageBox]::Show("No points found.")
+    }
+})
+$Form.Controls.Add($BtnLoadPoints)
+
+$BtnRestore = New-Object System.Windows.Forms.Button
+$BtnRestore.Text = "RESTORE SYSTEM TO SELECTED POINT"
+$BtnRestore.Location = New-Object System.Drawing.Point(50, 330)
+$BtnRestore.Size = New-Object System.Drawing.Size(300, 50)
+$BtnRestore.Add_Click({
+    $PointName = $ComboRestorePoints.SelectedItem
+    $SelectedComp = $ComboBox.Text
+    $Confirm = [System.Windows.Forms.MessageBox]::Show("Are you sure? This will REBOOT $SelectedComp", "Confirm", "YesNo")
+    if ($Confirm -eq 'Yes') {
+        Invoke-Command -ComputerName $SelectedComp -ScriptBlock {
+            param($Name)
+            $Point = Get-ComputerRestorePoint | Where-Object { $_.Description -eq $Name }
+            Restore-Computer -RestorePoint $Point.SequenceNumber -Confirm:$false
+        } -ArgumentList $PointName
+    }
+})
+$Form.Controls.Add($BtnRestore)
+
+$Form.ShowDialog()
+}
