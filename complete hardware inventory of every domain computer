@@ -1,0 +1,70 @@
+Import-Module ActiveDirectory;
+$BaseDir = "C:\Reports";
+$ReportPath = "$BaseDir\Full_Hardware_Inventory.html";
+$CsvDir = "$BaseDir\CSV_Files";
+
+if (!(Test-Path $CsvDir)) { New-Item -ItemType Directory -Path $CsvDir };
+$Computers = Get-ADComputer -Filter 'OperatingSystem -like "*Windows*"' | Select-Object -ExpandProperty Name;
+
+$Results = foreach ($c in $Computers) {
+    try {
+        $OS = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $c -ErrorAction Stop;
+        $CS = Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $c;
+        $BIOS = Get-CimInstance -ClassName Win32_BIOS -ComputerName $c;
+        $CPU = Get-CimInstance -ClassName Win32_Processor -ComputerName $c;
+       
+        $DiskDrives = Get-CimInstance -ClassName Win32_DiskDrive -ComputerName $c;
+        $TotalSize = ($DiskDrives | Measure-Object -Property Size -Sum).Sum / 1GB;
+        $GPU = Get-CimInstance -ClassName Win32_VideoController -ComputerName $c;
+        $Audio = Get-CimInstance -ClassName Win32_SoundDevice -ComputerName $c;
+        $NIC = Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ComputerName $c | Where-Object { $_.IPEnabled -eq $true };
+
+        [PSCustomObject]@{
+            "Computer" = $c; "Manufacturer" = $CS.Manufacturer; "Model" = $CS.Model; "User" = $CS.UserName; "OS" = $OS.Caption;
+            "Serial" = $BIOS.SerialNumber; "CPU" = $CPU[0].Name; "Cores" = $CPU[0].NumberOfCores;
+            "RAM" = [math]::Round($CS.TotalPhysicalMemory/1GB, 2);
+            "TotalDiskGB" = [math]::Round($TotalSize, 2); 
+            "DiskModel" = ($DiskDrives.Model -join "; ");
+            "GPU" = ($GPU.Name -join "; "); "Audio" = ($Audio.Name -join "; "); 
+            "NIC" = ($NIC.Description -join "; "); "IP" = ($NIC.IPAddress -join "; "); "MAC" = ($NIC.MACAddress -join "; ")
+        }
+    } catch { [PSCustomObject]@{ "Computer" = $c; "Status" = "Offline" } }
+};
+
+
+foreach ($r in $Results) {
+    if ($r.Status -ne "Offline") {
+        $r | Select-Object * -ExcludeProperty Status | Export-Csv -Path "$CsvDir\$($r.Computer).csv" -NoTypeInformation -Encoding UTF8
+    }
+}
+$Results | Where-Object { $_.Status -ne "Offline" } | Select-Object * -ExcludeProperty Status | Export-Csv -Path "$BaseDir\All_Computers_Inventory.csv" -NoTypeInformation -Encoding UTF8
+
+
+$Html = @"
+<html><head><style>
+    body { font-family: 'Segoe UI', sans-serif; background: #0e0e0e; color: #fff; padding: 20px; }
+    .header-area { display: flex; justify-content: space-between; align-items: center; }
+    table { width: 100%; border-collapse: collapse; min-width: 1800px; }
+    th, td { padding: 10px; border: 1px solid #444; text-align: center; }
+    th { background: #222; color: #00ffcc; }
+    .btn { background: #00ffcc; color: #000; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight: bold; }
+    .all-btn { background: #ffcc00; color: #000; padding: 10px 20px; border-radius: 4px; text-decoration: none; font-weight: bold; }
+</style></head><body>
+<div class='header-area'>
+    <h1>Domain Computers Hardware Inventory</h1>
+    <a class='all-btn' href='All_Computers_Inventory.csv'>Export All Report</a>
+</div>
+<table>
+    <tr><th>Action</th><th>Computer</th><th>Manufacturer</th><th>Model</th><th>User</th><th>OS</th><th>Serial</th><th>CPU</th><th>Cores</th><th>RAM</th><th>TotalDisk(GB)</th><th>DiskModel</th><th>GPU</th><th>Audio</th><th>NIC</th><th>IP</th><th>MAC</th></tr>
+"@;
+
+foreach ($r in $Results) {
+    if ($r.Status -ne "Offline") {
+        $Html += "<tr>
+            <td><a class='btn' href='CSV_Files/$($r.Computer).csv'>Report</a></td>
+            <td>$($r.Computer)</td><td>$($r.Manufacturer)</td><td>$($r.Model)</td><td>$($r.User)</td><td>$($r.OS)</td><td>$($r.Serial)</td><td>$($r.CPU)</td><td>$($r.Cores)</td><td>$($r.RAM)</td><td>$($r.TotalDiskGB)</td><td>$($r.DiskModel)</td><td>$($r.GPU)</td><td>$($r.Audio)</td><td>$($r.NIC)</td><td>$($r.IP)</td><td>$($r.MAC)</td>
+        </tr>"
+    }
+}
+$Html += "</table></body></html>";
+$Html | Out-File $ReportPath -Encoding UTF8; Start-Process $ReportPath
