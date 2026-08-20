@@ -1,0 +1,9 @@
+$Days = 60
+$Date = (Get-Date).AddDays(-$Days)
+
+Get-ADComputer -Filter * -Properties LastLogonDate |
+Where-Object {
+$_.LastLogonDate -lt $Date
+} |
+Select-Object Name, LastLogonDate |
+Export-Csv "C:\Reports\InactiveComputers.csv" -NoTypeInformation
