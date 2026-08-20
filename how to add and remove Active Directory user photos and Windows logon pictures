@@ -1,0 +1,577 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "User Photo Management Tool - Eng.Mahmoud Enan"
+$form.Size = New-Object System.Drawing.Size(750, 680)
+$form.StartPosition = "CenterScreen"
+$form.Font = New-Object System.Drawing.Font("Segoe UI", 11)
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+$form.MaximizeBox = $false
+$form.BackColor = [System.Drawing.Color]::White
+
+$lblTitle = New-Object System.Windows.Forms.Label
+$lblTitle.Text = "User Photo Management - Active Directory"
+$lblTitle.Location = New-Object System.Drawing.Point(30, 20)
+$lblTitle.Size = New-Object System.Drawing.Size(680, 35)
+$lblTitle.Font = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+$lblTitle.ForeColor = [System.Drawing.Color]::DarkBlue
+$form.Controls.Add($lblTitle)
+
+$lblSubTitle = New-Object System.Windows.Forms.Label
+$lblSubTitle.Text = "Add or Remove user photo from Active Directory and client computer"
+$lblSubTitle.Location = New-Object System.Drawing.Point(30, 55)
+$lblSubTitle.Size = New-Object System.Drawing.Size(680, 25)
+$lblSubTitle.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$lblSubTitle.ForeColor = [System.Drawing.Color]::Gray
+$form.Controls.Add($lblSubTitle)
+
+$lblUser = New-Object System.Windows.Forms.Label
+$lblUser.Text = "Username:"
+$lblUser.Location = New-Object System.Drawing.Point(30, 100)
+$lblUser.Size = New-Object System.Drawing.Size(150, 30)
+$form.Controls.Add($lblUser)
+
+$cmbUser = New-Object System.Windows.Forms.ComboBox
+$cmbUser.Location = New-Object System.Drawing.Point(180, 97)
+$cmbUser.Size = New-Object System.Drawing.Size(400, 30)
+$cmbUser.Font = New-Object System.Drawing.Font("Segoe UI", 11)
+$cmbUser.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
+$cmbUser.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
+$cmbUser.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
+$form.Controls.Add($cmbUser)
+
+$btnRefreshUsers = New-Object System.Windows.Forms.Button
+$btnRefreshUsers.Text = "Refresh"
+$btnRefreshUsers.Location = New-Object System.Drawing.Point(585, 95)
+$btnRefreshUsers.Size = New-Object System.Drawing.Size(120, 35)
+$btnRefreshUsers.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$btnRefreshUsers.BackColor = [System.Drawing.Color]::FromArgb(0, 123, 255)
+$btnRefreshUsers.ForeColor = [System.Drawing.Color]::White
+$btnRefreshUsers.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnRefreshUsers.FlatAppearance.BorderSize = 0
+$tooltip = New-Object System.Windows.Forms.ToolTip
+$tooltip.SetToolTip($btnRefreshUsers, "Refresh user list from Active Directory")
+$form.Controls.Add($btnRefreshUsers)
+
+$lblComputer = New-Object System.Windows.Forms.Label
+$lblComputer.Text = "Computer Name:"
+$lblComputer.Location = New-Object System.Drawing.Point(30, 150)
+$lblComputer.Size = New-Object System.Drawing.Size(150, 30)
+$form.Controls.Add($lblComputer)
+
+$cmbComputer = New-Object System.Windows.Forms.ComboBox
+$cmbComputer.Location = New-Object System.Drawing.Point(180, 147)
+$cmbComputer.Size = New-Object System.Drawing.Size(400, 30)
+$cmbComputer.Font = New-Object System.Drawing.Font("Segoe UI", 11)
+$cmbComputer.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDown
+$cmbComputer.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
+$cmbComputer.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
+$form.Controls.Add($cmbComputer)
+
+$btnRefreshComputers = New-Object System.Windows.Forms.Button
+$btnRefreshComputers.Text = "Refresh"
+$btnRefreshComputers.Location = New-Object System.Drawing.Point(585, 145)
+$btnRefreshComputers.Size = New-Object System.Drawing.Size(120, 35)
+$btnRefreshComputers.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$btnRefreshComputers.BackColor = [System.Drawing.Color]::FromArgb(0, 123, 255)
+$btnRefreshComputers.ForeColor = [System.Drawing.Color]::White
+$btnRefreshComputers.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnRefreshComputers.FlatAppearance.BorderSize = 0
+$tooltip.SetToolTip($btnRefreshComputers, "Refresh computer list from Active Directory")
+$form.Controls.Add($btnRefreshComputers)
+
+$lblPic = New-Object System.Windows.Forms.Label
+$lblPic.Text = "Image Path:"
+$lblPic.Location = New-Object System.Drawing.Point(30, 200)
+$lblPic.Size = New-Object System.Drawing.Size(150, 30)
+$form.Controls.Add($lblPic)
+
+$txtPic = New-Object System.Windows.Forms.TextBox
+$txtPic.Location = New-Object System.Drawing.Point(180, 197)
+$txtPic.Size = New-Object System.Drawing.Size(350, 30)
+$txtPic.ReadOnly = $true
+$txtPic.Font = New-Object System.Drawing.Font("Segoe UI", 11)
+$form.Controls.Add($txtPic)
+
+$btnBrowse = New-Object System.Windows.Forms.Button
+$btnBrowse.Text = "📁 Browse"
+$btnBrowse.Location = New-Object System.Drawing.Point(535, 195)
+$btnBrowse.Size = New-Object System.Drawing.Size(170, 30)
+$btnBrowse.BackColor = [System.Drawing.Color]::LightGray
+$btnBrowse.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$form.Controls.Add($btnBrowse)
+
+$btnBrowse.Add_Click({
+    $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    $openFileDialog.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp;*.gif"
+    $openFileDialog.Title = "Select User Photo"
+    if ($openFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $txtPic.Text = $openFileDialog.FileName
+        try {
+            $picPreview.Image = [System.Drawing.Image]::FromFile($openFileDialog.FileName)
+        } catch {}
+    }
+})
+
+$picPreview = New-Object System.Windows.Forms.PictureBox
+$picPreview.Location = New-Object System.Drawing.Point(180, 235)
+$picPreview.Size = New-Object System.Drawing.Size(120, 120)
+$picPreview.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
+$picPreview.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+$picPreview.BackColor = [System.Drawing.Color]::WhiteSmoke
+$form.Controls.Add($picPreview)
+
+$btnAdd = New-Object System.Windows.Forms.Button
+$btnAdd.Text = "✅ Add Photo"
+$btnAdd.Location = New-Object System.Drawing.Point(180, 380)
+$btnAdd.Size = New-Object System.Drawing.Size(170, 45)
+$btnAdd.BackColor = [System.Drawing.Color]::FromArgb(40, 167, 69)
+$btnAdd.ForeColor = [System.Drawing.Color]::White
+$btnAdd.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$btnAdd.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnAdd.FlatAppearance.BorderSize = 0
+$form.Controls.Add($btnAdd)
+
+$btnRemove = New-Object System.Windows.Forms.Button
+$btnRemove.Text = "🗑️ Remove Photo"
+$btnRemove.Location = New-Object System.Drawing.Point(370, 380)
+$btnRemove.Size = New-Object System.Drawing.Size(170, 45)
+$btnRemove.BackColor = [System.Drawing.Color]::FromArgb(220, 53, 69)
+$btnRemove.ForeColor = [System.Drawing.Color]::White
+$btnRemove.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$btnRemove.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnRemove.FlatAppearance.BorderSize = 0
+$form.Controls.Add($btnRemove)
+
+$btnExit = New-Object System.Windows.Forms.Button
+$btnExit.Text = "❌ Exit"
+$btnExit.Location = New-Object System.Drawing.Point(560, 380)
+$btnExit.Size = New-Object System.Drawing.Size(145, 45)
+$btnExit.BackColor = [System.Drawing.Color]::FromArgb(108, 117, 125)
+$btnExit.ForeColor = [System.Drawing.Color]::White
+$btnExit.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$btnExit.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$btnExit.FlatAppearance.BorderSize = 0
+$form.Controls.Add($btnExit)
+
+$btnExit.Add_Click({ $form.Close() })
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = New-Object System.Drawing.Point(30, 450)
+$progressBar.Size = New-Object System.Drawing.Size(680, 25)
+$progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+$progressBar.Value = 0
+$form.Controls.Add($progressBar)
+
+$lblStatus = New-Object System.Windows.Forms.Label
+$lblStatus.Text = "Ready - Loading users and computers..."
+$lblStatus.Location = New-Object System.Drawing.Point(30, 480)
+$lblStatus.Size = New-Object System.Drawing.Size(680, 25)
+$lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", 10)
+$lblStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+$form.Controls.Add($lblStatus)
+
+$allUsers = @()
+$allComputers = @()
+
+function Load-Users {
+    $lblStatus.Text = "Loading users from Active Directory..."
+    $lblStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+    $btnRefreshUsers.Enabled = $false
+    $btnRefreshUsers.Text = "⏳ Loading..."
+    $form.Refresh()
+    
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+        $global:allUsers = Get-ADUser -Filter * -Properties Name | Select-Object -ExpandProperty Name | Sort-Object
+        $cmbUser.Items.Clear()
+        foreach ($user in $global:allUsers) {
+            $cmbUser.Items.Add($user)
+        }
+        if ($cmbUser.Items.Count -gt 0) {
+            $cmbUser.SelectedIndex = 0
+        }
+        $lblStatus.Text = "Loaded $($cmbUser.Items.Count) users"
+        $lblStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+    } catch {
+        $lblStatus.Text = "Error loading users: $($_.Exception.Message)"
+        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        [System.Windows.Forms.MessageBox]::Show(
+            "Error loading users from Active Directory:`n`n$($_.Exception.Message)",
+            "Error",
+            "OK",
+            "Error"
+        )
+    } finally {
+        $btnRefreshUsers.Enabled = $true
+        $btnRefreshUsers.Text = "Refresh"
+    }
+}
+
+function Load-Computers {
+    $lblStatus.Text = "Loading computers from Active Directory..."
+    $lblStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+    $btnRefreshComputers.Enabled = $false
+    $btnRefreshComputers.Text = "⏳ Loading..."
+    $form.Refresh()
+    
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+        $global:allComputers = Get-ADComputer -Filter * -Properties Name | Select-Object -ExpandProperty Name | Sort-Object
+        $cmbComputer.Items.Clear()
+        foreach ($computer in $global:allComputers) {
+            $cmbComputer.Items.Add($computer)
+        }
+        if ($cmbComputer.Items.Count -gt 0) {
+            $cmbComputer.SelectedIndex = 0
+        }
+        $lblStatus.Text = "Loaded $($cmbUser.Items.Count) users and $($cmbComputer.Items.Count) computers"
+        $lblStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+    } catch {
+        $lblStatus.Text = "Error loading computers: $($_.Exception.Message)"
+        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        [System.Windows.Forms.MessageBox]::Show(
+            "Error loading computers from Active Directory:`n`n$($_.Exception.Message)",
+            "Error",
+            "OK",
+            "Error"
+        )
+    } finally {
+        $btnRefreshComputers.Enabled = $true
+        $btnRefreshComputers.Text = "Refresh"
+    }
+}
+
+$btnRefreshUsers.Add_Click({
+    Load-Users
+})
+
+$btnRefreshComputers.Add_Click({
+    Load-Computers
+})
+
+function Invoke-AddUserPhoto {
+    param(
+        [string]$UserName,
+        [string]$ComputerName,
+        [string]$ImagePath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserName)) {
+        [System.Windows.Forms.MessageBox]::Show("Please select username.", "Error", "OK", "Warning")
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($ComputerName)) {
+        [System.Windows.Forms.MessageBox]::Show("Please select computer name.", "Error", "OK", "Warning")
+        return $false
+    }
+    if (-not (Test-Path $ImagePath)) {
+        [System.Windows.Forms.MessageBox]::Show("Please select a valid image.", "Error", "OK", "Warning")
+        return $false
+    }
+
+    $lblStatus.Text = "Processing..."
+    $lblStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+    $progressBar.Value = 5
+    $btnAdd.Enabled = $false
+    $btnRemove.Enabled = $false
+    $form.Refresh()
+
+    try {
+        $lblStatus.Text = "[1/5] Reading image..."
+        $form.Refresh()
+        $bytes = [System.IO.File]::ReadAllBytes($ImagePath)
+        $progressBar.Value = 15
+
+        if ($bytes.Length -gt 102400) {
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                "Image size exceeds 100KB (current: $([math]::Round($bytes.Length/1024, 2)) KB).`n`nMay not display correctly.`nContinue?",
+                "Warning: Large Image",
+                "YesNo",
+                "Warning"
+            )
+            if ($result -eq "No") {
+                $lblStatus.Text = "Cancelled"
+                $lblStatus.ForeColor = [System.Drawing.Color]::Red
+                $btnAdd.Enabled = $true
+                $btnRemove.Enabled = $true
+                return $false
+            }
+        }
+        $progressBar.Value = 25
+
+        $lblStatus.Text = "[2/5] Saving to Active Directory..."
+        $form.Refresh()
+        Import-Module ActiveDirectory -ErrorAction Stop
+        Set-ADUser -Identity $UserName -Replace @{thumbnailPhoto = $bytes} -ErrorAction Stop
+        $progressBar.Value = 40
+
+        $adUser = Get-ADUser -Identity $UserName -Properties SID -ErrorAction Stop
+        $UserSID = $adUser.SID.Value
+        $progressBar.Value = 50
+
+        $lblStatus.Text = "[3/5] Preparing images..."
+        $form.Refresh()
+        $tempDir = "C:\Temp\UserPhoto_$UserName"
+        if (Test-Path $tempDir) { Remove-Item -Path $tempDir -Recurse -Force }
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+        $sizes = @(32, 40, 48, 96, 192, 200, 240, 448)
+        $imgStream = New-Object System.IO.MemoryStream($bytes, $false)
+        $originalImage = [System.Drawing.Image]::FromStream($imgStream)
+        $totalSizes = $sizes.Count
+        $currentSize = 0
+
+        foreach ($size in $sizes) {
+            $currentSize++
+            $percent = 50 + [int](($currentSize / $totalSizes) * 30)
+            $progressBar.Value = $percent
+            $lblStatus.Text = "[3/5] Processing ${size}px image..."
+            $form.Refresh()
+
+            $resized = New-Object System.Drawing.Bitmap($size, $size)
+            $graphics = [System.Drawing.Graphics]::FromImage($resized)
+            $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $graphics.DrawImage($originalImage, 0, 0, $size, $size)
+            $graphics.Dispose()
+            
+            $filePath = Join-Path $tempDir "Image$size.jpg"
+            $resized.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+            $resized.Dispose()
+        }
+        $originalImage.Dispose()
+        $imgStream.Dispose()
+        $progressBar.Value = 80
+
+        $lblStatus.Text = "[4/5] Pushing to $ComputerName..."
+        $form.Refresh()
+
+        $remoteUserDir = "C:\Users\Public\AccountPictures\$UserSID"
+        $remoteRegPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users\$UserSID"
+
+        $ping = Test-Connection -ComputerName $ComputerName -Count 1 -Quiet
+        if (-not $ping) {
+            throw "Computer $ComputerName is not reachable!"
+        }
+
+        try {
+            $session = New-PSSession -ComputerName $ComputerName -ErrorAction Stop
+        } catch {
+            throw "Cannot connect to $ComputerName via WinRM."
+        }
+
+        Invoke-Command -Session $session -ScriptBlock {
+            param($RemoteDir, $RegPath)
+            if (-not (Test-Path $RemoteDir)) {
+                New-Item -ItemType Directory -Path $RemoteDir -Force | Out-Null
+                (Get-Item $RemoteDir).Attributes = "Hidden"
+            }
+            if (-not (Test-Path $RegPath)) {
+                New-Item -Path $RegPath -Force | Out-Null
+            }
+        } -ArgumentList $remoteUserDir, $remoteRegPath
+
+        foreach ($size in $sizes) {
+            $localFile = Join-Path $tempDir "Image$size.jpg"
+            $remoteFile = "$remoteUserDir\Image$size.jpg"
+            Copy-Item -Path $localFile -Destination $remoteFile -ToSession $session -Force
+        }
+
+        Invoke-Command -Session $session -ScriptBlock {
+            param($SID)
+            $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users\$SID"
+            $baseDir = "C:\Users\Public\AccountPictures\$SID"
+            $sizes = @(32, 40, 48, 96, 192, 200, 240, 448)
+            
+            foreach ($size in $sizes) {
+                $filePath = "$baseDir\Image$size.jpg"
+                if (Test-Path $filePath) {
+                    Set-ItemProperty -Path $regPath -Name "Image$size" -Value $filePath -Force
+                }
+            }
+        } -ArgumentList $UserSID
+
+        Invoke-Command -Session $session -ScriptBlock {
+            Restart-Service -Name "WbioSrvc" -ErrorAction SilentlyContinue
+            Remove-Item -Path "$env:USERPROFILE\AppData\Local\Temp\*User*.jpg" -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "$env:USERPROFILE\AppData\Local\Microsoft\Windows\AccountPictures\*" -Force -ErrorAction SilentlyContinue
+        }
+
+        Remove-PSSession $session
+        Remove-Item -Path $tempDir -Recurse -Force
+
+        $progressBar.Value = 100
+        $lblStatus.Text = "Photo added successfully!"
+        $lblStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+        $btnAdd.Enabled = $true
+        $btnRemove.Enabled = $true
+
+        try {
+            $msg = "Your profile photo has been added successfully!`n`nPlease restart your computer for the changes to take effect."
+            Invoke-Command -ComputerName $ComputerName -ScriptBlock {
+                param($Message)
+                Add-Type -AssemblyName System.Windows.Forms
+                [System.Windows.Forms.MessageBox]::Show($Message, "Photo Updated", "OK", "Information")
+            } -ArgumentList $msg -ErrorAction SilentlyContinue
+        } catch {}
+
+        [System.Windows.Forms.MessageBox]::Show(
+            "Photo added and client configured successfully!`n`n" +
+            "User: $UserName`n" +
+            "Computer: $ComputerName`n`n" +
+            "Ask user to restart their computer.",
+            "Success",
+            "OK",
+            "Information"
+        )
+        return $true
+
+    } catch {
+        $lblStatus.Text = "Error: $($_.Exception.Message)"
+        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        $btnAdd.Enabled = $true
+        $btnRemove.Enabled = $true
+        $progressBar.Value = 0
+
+        [System.Windows.Forms.MessageBox]::Show(
+            "Error:`n`n$($_.Exception.Message)",
+            "Error",
+            "OK",
+            "Error"
+        )
+        return $false
+    }
+}
+
+function Invoke-RemoveUserPhoto {
+    param(
+        [string]$UserName,
+        [string]$ComputerName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserName)) {
+        [System.Windows.Forms.MessageBox]::Show("Please select username.", "Error", "OK", "Warning")
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($ComputerName)) {
+        [System.Windows.Forms.MessageBox]::Show("Please select computer name.", "Error", "OK", "Warning")
+        return $false
+    }
+
+    $confirm = [System.Windows.Forms.MessageBox]::Show(
+        "Are you sure you want to remove photo for user $UserName?`n`n" +
+        "This will remove from Active Directory and computer $ComputerName.",
+        "Confirm Removal",
+        "YesNo",
+        "Warning"
+    )
+    if ($confirm -eq "No") {
+        $lblStatus.Text = "Cancelled"
+        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        return $false
+    }
+
+    $lblStatus.Text = "Removing photo..."
+    $lblStatus.ForeColor = [System.Drawing.Color]::DarkOrange
+    $progressBar.Value = 10
+    $btnAdd.Enabled = $false
+    $btnRemove.Enabled = $false
+    $form.Refresh()
+
+    try {
+        $lblStatus.Text = "[1/3] Getting user data..."
+        $form.Refresh()
+        Import-Module ActiveDirectory -ErrorAction Stop
+        
+        $adUser = Get-ADUser -Identity $UserName -Properties SID -ErrorAction Stop
+        $UserSID = $adUser.SID.Value
+        $progressBar.Value = 30
+
+        $lblStatus.Text = "[2/3] Removing from Active Directory..."
+        $form.Refresh()
+        Set-ADUser -Identity $UserName -Clear thumbnailPhoto -ErrorAction Stop
+        $progressBar.Value = 60
+
+        $lblStatus.Text = "[3/3] Removing from $ComputerName..."
+        $form.Refresh()
+
+        $ping = Test-Connection -ComputerName $ComputerName -Count 1 -Quiet
+        if ($ping) {
+            try {
+                $session = New-PSSession -ComputerName $ComputerName -ErrorAction Stop
+                
+                Invoke-Command -Session $session -ScriptBlock {
+                    param($SID)
+                    $userDir = "C:\Users\Public\AccountPictures\$SID"
+                    if (Test-Path $userDir) {
+                        Remove-Item -Path $userDir -Recurse -Force
+                    }
+                    
+                    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users\$SID"
+                    if (Test-Path $regPath) {
+                        Remove-Item -Path $regPath -Recurse -Force
+                    }
+                    
+                    Remove-Item -Path "$env:USERPROFILE\AppData\Local\Temp\*User*.jpg" -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path "$env:USERPROFILE\AppData\Local\Microsoft\Windows\AccountPictures\*" -Force -ErrorAction SilentlyContinue
+                    
+                    Restart-Service -Name "WbioSrvc" -ErrorAction SilentlyContinue
+                } -ArgumentList $UserSID
+                
+                Remove-PSSession $session
+            } catch {}
+        }
+
+        $progressBar.Value = 100
+        $lblStatus.Text = "Photo removed successfully!"
+        $lblStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+        $btnAdd.Enabled = $true
+        $btnRemove.Enabled = $true
+
+        [System.Windows.Forms.MessageBox]::Show(
+            "Photo removed successfully!`n`n" +
+            "User: $UserName`n" +
+            "Computer: $ComputerName`n`n" +
+            "Ask user to restart their computer.",
+            "Success",
+            "OK",
+            "Information"
+        )
+        return $true
+
+    } catch {
+        $lblStatus.Text = "Error: $($_.Exception.Message)"
+        $lblStatus.ForeColor = [System.Drawing.Color]::Red
+        $btnAdd.Enabled = $true
+        $btnRemove.Enabled = $true
+        $progressBar.Value = 0
+
+        [System.Windows.Forms.MessageBox]::Show(
+            "Error:`n`n$($_.Exception.Message)",
+            "Error",
+            "OK",
+            "Error"
+        )
+        return $false
+    }
+}
+
+$btnAdd.Add_Click({
+    $UserName = $cmbUser.Text.Trim()
+    $ComputerName = $cmbComputer.Text.Trim()
+    $ImagePath = $txtPic.Text.Trim()
+    Invoke-AddUserPhoto -UserName $UserName -ComputerName $ComputerName -ImagePath $ImagePath
+})
+
+$btnRemove.Add_Click({
+    $UserName = $cmbUser.Text.Trim()
+    $ComputerName = $cmbComputer.Text.Trim()
+    Invoke-RemoveUserPhoto -UserName $UserName -ComputerName $ComputerName
+})
+
+Load-Users
+Load-Computers
+
+$form.ShowDialog()
