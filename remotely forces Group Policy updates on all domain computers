@@ -1,0 +1,84 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+try { Import-Module ActiveDirectory, GroupPolicy -ErrorAction Stop } catch { [System.Windows.Forms.MessageBox]::Show("AD/GP Modules required!"); return }
+
+# --- UI Setup ---
+$form = New-Object System.Windows.Forms.Form; $form.Text = "Group Policy Update Tool"; $form.Size = [System.Drawing.Size]::new(900, 650); $form.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240); $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$ButtonStyle = { param($btn) $btn.FlatStyle = 'Flat'; $btn.FlatAppearance.BorderSize = 1; $btn.BackColor = [System.Drawing.Color]::White; $btn.ForeColor = [System.Drawing.Color]::Black }
+
+$cmbOU = New-Object System.Windows.Forms.ComboBox; $cmbOU.Location = "20, 20"; $cmbOU.Size = "250, 30"; $form.Controls.Add($cmbOU)
+$btnLoad = New-Object System.Windows.Forms.Button; $btnLoad.Text = "Load Computers"; $btnLoad.Location = "20, 55"; $btnLoad.Size = "120, 30"; &$ButtonStyle $btnLoad; $form.Controls.Add($btnLoad)
+$btnRemove = New-Object System.Windows.Forms.Button; $btnRemove.Text = "Remove Computer"; $btnRemove.Location = "150, 55"; $btnRemove.Size = "120, 30"; &$ButtonStyle $btnRemove; $form.Controls.Add($btnRemove)
+$listBox = New-Object System.Windows.Forms.ListBox; $listBox.Location = "20, 95"; $listBox.Size = "250, 320"; $listBox.BackColor = [System.Drawing.Color]::White; $listBox.ForeColor = [System.Drawing.Color]::Black; $listBox.SelectionMode = "MultiExtended"; $form.Controls.Add($listBox)
+
+
+$btnSelectAll = New-Object System.Windows.Forms.Button; $btnSelectAll.Text = "Select All"; $btnSelectAll.Location = "20, 420"; $btnSelectAll.Size = "120, 30"; &$ButtonStyle $btnSelectAll; $form.Controls.Add($btnSelectAll)
+$btnClear = New-Object System.Windows.Forms.Button; $btnClear.Text = "Clear Log"; $btnClear.Location = "150, 420"; $btnClear.Size = "120, 30"; &$ButtonStyle $btnClear; $form.Controls.Add($btnClear)
+
+$logBox = New-Object System.Windows.Forms.RichTextBox; $logBox.Location = "290, 20"; $logBox.Size = "350, 425"; $logBox.BackColor = [System.Drawing.Color]::White; $logBox.ForeColor = [System.Drawing.Color]::Black; $form.Controls.Add($logBox)
+$statsBox = New-Object System.Windows.Forms.RichTextBox; $statsBox.Location = "650, 20"; $statsBox.Size = "220, 425"; $statsBox.ReadOnly = $true; $statsBox.BackColor = [System.Drawing.Color]::White; $statsBox.ForeColor = [System.Drawing.Color]::Black; $form.Controls.Add($statsBox)
+
+$progBar = New-Object System.Windows.Forms.ProgressBar; $progBar.Location = "20, 500"; $progBar.Size = "850, 25"; $form.Controls.Add($progBar)
+$btnRun = New-Object System.Windows.Forms.Button; $btnRun.Text = "Execute Policy"; $btnRun.Size = "120, 50"; $btnRun.Location = "330, 540"; $btnRun.BackColor = [System.Drawing.Color]::FromArgb(0, 122, 204); $btnRun.ForeColor = [System.Drawing.Color]::White; $btnRun.FlatStyle = 'Flat'; $form.Controls.Add($btnRun)
+$btnCancel = New-Object System.Windows.Forms.Button; $btnCancel.Text = "Cancel"; $btnCancel.Size = "120, 50"; $btnCancel.Location = "460, 540"; &$ButtonStyle $btnCancel; $form.Controls.Add($btnCancel)
+
+# --- Logic ---
+$DomainRoot = (Get-ADDomain).DistinguishedName
+$cmbOU.Items.Add("[Entire Domain]"); $cmbOU.Items.AddRange((Get-ADOrganizationalUnit -LDAPFilter "(ou=*)" | Select-Object -ExpandProperty DistinguishedName))
+
+$btnSelectAll.Add_Click({ for($i=0; $i -lt $listBox.Items.Count; $i++) { $listBox.SetSelected($i, $true) } })
+$btnClear.Add_Click({ 
+    $logBox.Clear(); $statsBox.Clear(); $progBar.Value = 0 
+})
+$btnRemove.Add_Click({ while($listBox.SelectedItems.Count -gt 0) { $listBox.Items.Remove($listBox.SelectedItems[0]) } })
+$btnCancel.Add_Click({ $script:Running = $false; Get-Job | Stop-Job -ErrorAction SilentlyContinue; Get-Job | Remove-Job -ErrorAction SilentlyContinue; $form.Cursor = [System.Windows.Forms.Cursors]::Default; $btnRun.Enabled = $btnLoad.Enabled = $btnRemove.Enabled = $cmbOU.Enabled = $true })
+
+$btnLoad.Add_Click({
+    if(-not $cmbOU.SelectedItem) { [System.Windows.Forms.MessageBox]::Show("Select an OU first!"); return }
+    $searchBase = if($cmbOU.SelectedItem -eq "[Entire Domain]") { $DomainRoot } else { $cmbOU.SelectedItem }
+    $global:AllPCs = Get-ADComputer -SearchBase $searchBase -Filter 'OperatingSystem -like "*Windows*"' | Select-Object -ExpandProperty Name
+    $listBox.Items.Clear(); foreach($p in $global:AllPCs) { $listBox.Items.Add($p) }; for($i=0; $i -lt $listBox.Items.Count; $i++) { $listBox.SetSelected($i, $true) }
+})
+
+$btnRun.Add_Click({
+    $PCs = @($listBox.SelectedItems); if($PCs.Count -eq 0) { return }
+    $progBar.Maximum = $PCs.Count; $progBar.Value = 0; $Results = @(); $Counts = @{Success=0; Offline=0; RPC=0; Failed=0}
+    $Queue = [System.Collections.Generic.Queue[string]]::new(); $PCs | ForEach-Object { $Queue.Enqueue($_) }
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor; $btnRun.Enabled = $btnLoad.Enabled = $btnRemove.Enabled = $btnSelectAll.Enabled = $btnClear.Enabled = $cmbOU.Enabled = $false; $btnCancel.Enabled = $true
+    $script:RunningJobs = @(); $script:Running = $true
+    while(($Queue.Count -gt 0 -or $script:RunningJobs.Count -gt 0) -and $script:Running) {
+        while($script:RunningJobs.Count -lt 20 -and $Queue.Count -gt 0) {
+            $pc = $Queue.Dequeue()
+            $script:RunningJobs += Start-Job -ScriptBlock {
+                param($pc); Import-Module GroupPolicy -ErrorAction SilentlyContinue
+                $res = [PSCustomObject]@{ Computer=$pc; Status="Failed"; Date=(Get-Date -Format "yyyy-MM-dd"); Time=(Get-Date -Format "HH:mm:ss"); Error="" }
+                try {
+                    if (-not (Test-Connection $pc -Count 1 -Quiet)) { $res.Status = "Offline" }
+                    else {
+                        $socket = New-Object System.Net.Sockets.TcpClient; $conn = $socket.BeginConnect($pc, 135, $null, $null)
+                        if($conn.AsyncWaitHandle.WaitOne(2000, $false)) { Invoke-GPUpdate -Computer $pc -Force -RandomDelayInMinutes 0 -ErrorAction Stop; $res.Status = "Success" } else { $res.Status = "RPC Failed" }
+                        $socket.Close()
+                    }
+                } catch { $res.Error = $_.Exception.Message }
+                return $res
+            } -ArgumentList $pc
+        }
+        $Completed = @()
+        foreach($job in $script:RunningJobs) {
+            if($job.State -ne "Running") {
+                $data = $job | Receive-Job; $Results += $data; $progBar.Value++; $Completed += $job
+                switch ($data.Status) { "Success"{$Counts.Success++}; "Offline"{$Counts.Offline++}; "RPC Failed"{$Counts.RPC++}; Default{$Counts.Failed++} }
+                $color = switch($data.Status) { "Success" {"Green"}; "Offline" {"DarkOrange"}; "RPC Failed" {"Goldenrod"}; Default {"Red"} }
+                $logBox.SelectionStart = $logBox.TextLength; $logBox.SelectionColor = $color; $logBox.AppendText("[$($data.Computer)] $($data.Status)`r`n")
+                $statsBox.Clear(); $statsBox.SelectionColor = [System.Drawing.Color]::Black; $statsBox.AppendText("STATS:`n"); $statsBox.SelectionColor = [System.Drawing.Color]::Green; $statsBox.AppendText("Success: $($Counts.Success)`n"); $statsBox.SelectionColor = [System.Drawing.Color]::DarkOrange; $statsBox.AppendText("Offline: $($Counts.Offline)`n"); $statsBox.SelectionColor = [System.Drawing.Color]::Goldenrod; $statsBox.AppendText("RPC Fail: $($Counts.RPC)`n"); $statsBox.SelectionColor = [System.Drawing.Color]::Red; $statsBox.AppendText("Failed: $($Counts.Failed)`n")
+                [System.Windows.Forms.Application]::DoEvents()
+            }
+        }
+        if($Completed.Count -gt 0) { $script:RunningJobs = $script:RunningJobs | Where-Object { $Completed.Id -notcontains $_.Id }; $Completed | Remove-Job -ErrorAction SilentlyContinue }
+        Start-Sleep -Milliseconds 100
+    }
+    $Results | Select-Object Computer, Status, Date, Time, Error | Export-Csv -Path "$([Environment]::GetFolderPath('Desktop'))\Report_$(Get-Date -Format 'yyyyMMdd_HHmm').csv" -NoTypeInformation
+    $btnRun.Enabled = $btnLoad.Enabled = $btnRemove.Enabled = $btnSelectAll.Enabled = $btnClear.Enabled = $cmbOU.Enabled = $true; $btnCancel.Enabled = $false; $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    [System.Windows.Forms.MessageBox]::Show("Process Finished.")
+})
+$form.ShowDialog()
