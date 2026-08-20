@@ -1,0 +1,180 @@
+$ScriptBlock = {
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+Import-Module ActiveDirectory
+$global:AllComputers = Get-ADComputer -Filter 'OperatingSystem -like "*Windows*"' | Select-Object -ExpandProperty Name
+$ComputerArrayList = [System.Collections.ArrayList]$global:AllComputers
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Enterprise File/Folder Transfer Tool v3.7"
+$form.Size = New-Object System.Drawing.Size(540, 720)
+$form.StartPosition = "CenterScreen"
+
+$btnBrowseFile = New-Object System.Windows.Forms.Button
+$btnBrowseFile.Text = "Browse File"; $btnBrowseFile.Location = "20,15"; $btnBrowseFile.Size = "100,25"
+
+$btnBrowseFolder = New-Object System.Windows.Forms.Button
+$btnBrowseFolder.Text = "Browse Folder"; $btnBrowseFolder.Location = "130,15"; $btnBrowseFolder.Size = "100,25"
+
+$txtPath = New-Object System.Windows.Forms.TextBox
+$txtPath.Location = "240,17"; $txtPath.Size = "260,20"
+
+$btnBrowseFile.Add_Click({ 
+    $openFile = New-Object System.Windows.Forms.OpenFileDialog
+    if ($openFile.ShowDialog() -eq "OK") { $txtPath.Text = $openFile.FileName } 
+})
+
+$btnBrowseFolder.Add_Click({ 
+    $openFolder = New-Object System.Windows.Forms.FolderBrowserDialog
+    if ($openFolder.ShowDialog() -eq "OK") { $txtPath.Text = $openFolder.SelectedPath } 
+})
+
+$form.Controls.AddRange(@($btnBrowseFile, $btnBrowseFolder, $txtPath))
+
+$lblCombo = New-Object System.Windows.Forms.Label
+$lblCombo.Text = "Select / Type Device Name:"; $lblCombo.Location = "20,65"; $lblCombo.Size = "160,20"
+
+$comboTo = New-Object System.Windows.Forms.ComboBox
+$comboTo.Location = "180,62"; $comboTo.Size = "320,30"; $comboTo.DataSource = $ComputerArrayList
+$comboTo.AutoCompleteMode = [System.Windows.Forms.AutoCompleteMode]::SuggestAppend
+$comboTo.AutoCompleteSource = [System.Windows.Forms.AutoCompleteSource]::ListItems
+
+$btnAdd = New-Object System.Windows.Forms.Button
+$btnAdd.Text = "Add Target"; $btnAdd.Location = "140,105"; $btnAdd.Size = "100,25"
+
+$btnAddAll = New-Object System.Windows.Forms.Button
+$btnAddAll.Text = "Add All"; $btnAddAll.Location = "250,105"; $btnAddAll.Size = "100,25"
+
+$btnRemove = New-Object System.Windows.Forms.Button
+$btnRemove.Text = "Remove Selected"; $btnRemove.Location = "360,105"; $btnRemove.Size = "110,25"
+
+$listBoxTarget = New-Object System.Windows.Forms.ListBox
+$listBoxTarget.Location = "20,145"; $listBoxTarget.Size = "480,120"
+
+$btnAdd.Add_Click({ if($comboTo.Text -and !($listBoxTarget.Items.Contains($comboTo.Text))) { $listBoxTarget.Items.Add($comboTo.Text) | Out-Null } })
+$btnAddAll.Add_Click({ foreach ($item in $comboTo.Items) { if (!($listBoxTarget.Items.Contains($item))) { $listBoxTarget.Items.Add($item) | Out-Null } } })
+$btnRemove.Add_Click({ if ($listBoxTarget.SelectedItem -ne $null) { $listBoxTarget.Items.Remove($listBoxTarget.SelectedItem) } })
+
+$form.Controls.AddRange(@($lblCombo, $comboTo, $btnAdd, $btnAddAll, $btnRemove, $listBoxTarget))
+
+$lblPartition = New-Object System.Windows.Forms.Label
+$lblPartition.Text = "Partition:"; $lblPartition.Location = "20,285"; $lblPartition.Size = "60,20"
+
+$comboPartition = New-Object System.Windows.Forms.ComboBox
+$comboPartition.Location = "85,282"; $comboPartition.Size = "80,25"
+$partitions = @("C$", "D$", "E$", "F$", "G$", "H$", "I$", "J$", "K$", "L$", "M$", "N$", "O$", "P$", "Q$", "R$", "S$", "T$", "U$", "V$", "W$", "X$", "Y$", "Z$")
+$comboPartition.Items.AddRange($partitions); $comboPartition.SelectedIndex = 0
+
+$lblSubFolder = New-Object System.Windows.Forms.Label
+$lblSubFolder.Text = "Custom Folder (Optional):"; $lblSubFolder.Location = "185,285"; $lblSubFolder.Size = "150,20"
+
+$txtSubFolder = New-Object System.Windows.Forms.TextBox
+$txtSubFolder.Location = "340,282"; $txtSubFolder.Size = "160,20"
+
+$form.Controls.AddRange(@($lblPartition, $comboPartition, $lblSubFolder, $txtSubFolder))
+
+$btnCreateFolder = New-Object System.Windows.Forms.Button
+$btnCreateFolder.Text = "Create New Folder On Target Devices"; $btnCreateFolder.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+$btnCreateFolder.Location = "20,325"; $btnCreateFolder.Size = "480,30"
+
+$btnCreateFolder.Add_Click({
+    if ($listBoxTarget.Items.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("Please add at least one target computer first."); return }
+    $folderForm = New-Object System.Windows.Forms.Form
+    $folderForm.Text = "Folder Name"; $folderForm.Size = New-Object System.Drawing.Size(300, 150); $folderForm.StartPosition = "CenterParent"
+    $lblInput = New-Object System.Windows.Forms.Label; $lblInput.Text = "Enter New Folder Name:"; $lblInput.Location = "20,15"; $lblInput.Size = "200,20"
+    $txtInput = New-Object System.Windows.Forms.TextBox; $txtInput.Location = "20,40"; $txtInput.Size = "240,20"
+    $btnConfirm = New-Object System.Windows.Forms.Button; $btnConfirm.Text = "OK"; $btnConfirm.Location = "100,75"; $btnConfirm.Size = "80,25"
+    $btnConfirm.Add_Click({ $folderForm.DialogResult = [System.Windows.Forms.DialogResult]::OK; $folderForm.Close() })
+    $folderForm.Controls.AddRange(@($lblInput, $txtInput, $btnConfirm))
+    
+    if ($folderForm.ShowDialog() -eq "OK" -and ![string]::IsNullOrEmpty($txtInput.Text)) {
+        $newFolderName = $txtInput.Text.Trim()
+        $drive = $comboPartition.Text.Replace("$","")
+        $successCount = 0; $failCount = 0
+        foreach ($target in $listBoxTarget.Items) {
+            $baseDir = "\\$target\${drive}`$"
+            if (![string]::IsNullOrEmpty($txtSubFolder.Text)) { $baseDir = Join-Path $baseDir $txtSubFolder.Text.Trim('\') }
+            $fullNewPath = Join-Path $baseDir $newFolderName
+            if (Test-Connection -ComputerName $target -Count 1 -Quiet) {
+                try {
+                    if (!(Test-Path $fullNewPath)) { New-Item -Path $fullNewPath -ItemType Directory -Force | Out-Null }
+                    $successCount++
+                } catch { $failCount++ }
+            } else { $failCount++ }
+        }
+        [System.Windows.Forms.MessageBox]::Show("Process Finished!`nCreated folder on $successCount devices.`nFailed on $failCount devices.", "Folder Status")
+    }
+})
+
+$form.Controls.Add($btnCreateFolder)
+
+$lblStatus = New-Object System.Windows.Forms.Label
+$lblStatus.Location = "20,375"; $lblStatus.Size = "480,20"; $lblStatus.Text = "Ready"
+
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = "20,405"; $progressBar.Size = "480,30"
+$progressBar.Minimum = 0; $progressBar.Maximum = 100; $progressBar.Value = 0
+
+$form.Controls.AddRange(@($lblStatus, $progressBar))
+
+$btnRun = New-Object System.Windows.Forms.Button
+$btnRun.Text = "Start Enterprise Transfer"; $btnRun.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$btnRun.Location = "160,500"; $btnRun.Size = "200,50"
+
+$btnRun.Add_Click({
+    $source = $txtPath.Text
+    if ([string]::IsNullOrEmpty($source)) { [System.Windows.Forms.MessageBox]::Show("Please select a file or folder first!"); return }
+    if (!(Test-Path $source)) { [System.Windows.Forms.MessageBox]::Show("Path not found!"); return }
+    if ($listBoxTarget.Items.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("Please add at least one target computer."); return }
+    
+    $btnRun.Enabled = $false
+    $isFolder = Test-Path $source -PathType Container
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $logPath = Join-Path $desktopPath "Transfer_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+    "--- FILE TRANSFER REPORT ---`r`nSource: $source`r`n" | Out-File $logPath
+    
+    foreach ($target in $listBoxTarget.Items) {
+        $drive = $comboPartition.Text.Replace("$",""); $destDir = "\\$target\${drive}`$"
+        if (![string]::IsNullOrEmpty($txtSubFolder.Text)) { $cleanSubFolder = $txtSubFolder.Text.TrimStart('\').TrimEnd('\'); $destDir = Join-Path $destDir $cleanSubFolder }
+        
+        $lblStatus.Text = "Checking connection for $target (Ping)..."; $progressBar.Value = 0; $form.Refresh()
+        if (!(Test-Connection -ComputerName $target -Count 1 -Quiet)) { 
+            $lblStatus.Text = "$target is Offline. Skipping..."
+            "[OFFLINE] Failed to reach $target" | Out-File $logPath -Append
+            continue 
+        }
+        
+        $lblStatus.Text = "Transferring to $target..."; $form.Refresh()
+        try {
+            if (!(Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory -Force | Out-Null }
+            if ($isFolder) { 
+                $progressBar.Style = "Marquee"
+                Copy-Item -Path $source -Destination $destDir -Recurse -Force -ErrorAction Stop
+                $progressBar.Style = "Blocks"; $progressBar.Value = 100 
+            } else {
+                $fileName = [System.IO.Path]::GetFileName($source); $destPath = Join-Path $destDir $fileName
+                $fromStream = [System.IO.File]::OpenRead($source); $toStream = [System.IO.File]::OpenWrite($destPath)
+                $buffer = New-Object Byte[] 16MB
+                $totalBytes = $fromStream.Length; $totalBytesRead = 0; $bytesRead = 0
+                
+                while (($bytesRead = $fromStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                    $toStream.Write($buffer, 0, $bytesRead); $totalBytesRead += $bytesRead
+                    $percent = [int](($totalBytesRead / $totalBytes) * 100); $progressBar.Value = $percent
+                    $lblStatus.Text = "Copying file to $target : $percent%"; [System.Windows.Forms.Application]::DoEvents()
+                }
+                $fromStream.Close(); $toStream.Close()
+            }
+            "[SUCCESS] Successfully transferred to \\$target" | Out-File $logPath -Append
+        } catch {
+            if ($fromStream) { $fromStream.Close() }; if ($toStream) { $toStream.Close() }; $progressBar.Style = "Blocks"
+            "[ERROR] Failed on $target - Reason: $($_.Exception.Message)" | Out-File $logPath -Append
+        }
+    }
+    $lblStatus.Text = "Completed! Log saved to Desktop."; $progressBar.Value = 100; $btnRun.Enabled = $true
+    [System.Windows.Forms.MessageBox]::Show("Process Finished!`nLog file saved to your Desktop.", "Done", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+})
+
+$form.Controls.Add($btnRun)
+$form.ShowDialog()
+}; & $ScriptBlock
