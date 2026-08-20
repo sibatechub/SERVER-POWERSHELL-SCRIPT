@@ -1,0 +1,86 @@
+Add-Type -AssemblyName PresentationFramework
+Import-Module DnsServer
+Import-Module ActiveDirectory
+
+[xml]$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        Title="DNS Blocker - Active Directory Edition" Height="500" Width="450" WindowStartupLocation="CenterScreen">
+    <StackPanel Margin="10">
+        <Label Content="Select Device (Name):"/>
+        <ComboBox Name="cmbClient" IsEditable="True" Height="30" Margin="0,0,0,10"/>
+        <Label Content="Domain to Block:"/>
+        <TextBox Name="txtDomain" Height="30" Margin="0,0,0,10"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <Button Name="btnBlock" Content="Block Website" Width="130" Height="30"/>
+            <Button Name="btnUnblock" Content="Allow Website" Width="130" Height="30" Margin="10,0"/>
+        </StackPanel>
+        <DataGrid Name="grid" Height="250" Margin="0,15,0,0" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Policy Name" Binding="{Binding PolicyName}" Width="*"/>
+                <DataGridTextColumn Header="Computer" Binding="{Binding ComputerName}" Width="120"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </StackPanel>
+</Window>
+"@
+
+$reader = [System.Xml.XmlNodeReader]::new($xaml)
+$window = [Windows.Markup.XamlReader]::Load($reader)
+$grid = $window.FindName("grid")
+$txtDomain = $window.FindName("txtDomain")
+$cmbClient = $window.FindName("cmbClient")
+
+
+$allComputers = Get-ADComputer -Filter *
+$cmbClient.ItemsSource = $allComputers | Select-Object -ExpandProperty Name
+
+function Refresh-Grid {
+    $policies = Get-DnsServerQueryResolutionPolicy | Where-Object { $_.Name -like "Block_*_For_*" }
+    $list = New-Object System.Collections.ArrayList
+    foreach ($p in $policies) {
+        $parts = $p.Name -split "_For_"
+        $item = New-Object PSObject -Property @{
+            PolicyName = $p.Name
+            ComputerName = $parts[1]
+        }
+        [void]$list.Add($item)
+    }
+    $grid.ItemsSource = $list
+}
+
+$window.FindName("btnBlock").Add_Click({
+    $domain = $txtDomain.Text.Trim()
+    $compName = $cmbClient.Text.Trim()
+    
+    if ($domain -and $compName) {
+       
+        $compObj = Get-ADComputer -Identity $compName -Properties IPv4Address -ErrorAction SilentlyContinue
+        if ($compObj -and $compObj.IPv4Address) {
+            $ip = $compObj.IPv4Address
+            $subnetName = "Subnet_" + $compName
+            $policyName = "Block_" + $domain.Replace(".", "_") + "_For_" + $compName
+            
+            
+            if (-not (Get-DnsServerClientSubnet -Name $subnetName -ErrorAction SilentlyContinue)) {
+                Add-DnsServerClientSubnet -Name $subnetName -IPv4Subnet "$ip/32"
+            }
+            
+            
+            Add-DnsServerQueryResolutionPolicy -Name $policyName -Action DENY -FQDN "EQ,$domain" -ClientSubnet "EQ,$subnetName" -ErrorAction SilentlyContinue
+            Refresh-Grid
+        } else {
+            [System.Windows.MessageBox]::Show("تعذر العثور على IP للجهاز في Active Directory")
+        }
+    }
+})
+
+$window.FindName("btnUnblock").Add_Click({
+    $selected = $grid.SelectedItem
+    if ($selected) {
+        Remove-DnsServerQueryResolutionPolicy -Name $selected.PolicyName -Force -ErrorAction SilentlyContinue
+        Refresh-Grid
+    }
+})
+
+Refresh-Grid
+$window.ShowDialog() | Out-Null
