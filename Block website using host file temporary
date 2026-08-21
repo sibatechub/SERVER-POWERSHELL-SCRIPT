@@ -492,3 +492,227 @@ $btnUnblock.Add_Click({
 
     $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
     $total = $selected.Count
+    $current = 0
+    $successCount = 0
+    $notFoundCount = 0
+    $failedCount = 0
+
+    Write-Log "========== UNBLOCK OPERATION STARTED =========="
+    Write-Log "Domain(s): $($domainsToRemove -join ', ')"
+    Write-Log "Target computers: $total"
+    Write-Log "-------------------------------------------"
+
+    foreach ($pc in $selected) {
+        $current++
+        Update-Progress -current $current -total $total -status "Processing $pc"
+        Write-Log "Unblocking on $pc..."
+
+        $hostsPath = "\\$pc\c$\Windows\System32\drivers\etc\hosts"
+
+        try {
+            if (-not (Test-RemoteAccess -ComputerName $pc)) {
+                Write-Log "  -> $pc : ACCESS DENIED"
+                $failedCount++
+                continue
+            }
+
+            $hostsLines = Get-Content -Path $hostsPath -ErrorAction Stop
+            $newLines = @()
+            $removed = $false
+
+            foreach ($line in $hostsLines) {
+                $clean = $line.Trim()
+                $keep = $true
+                if (-not $clean.StartsWith("#") -and -not [string]::IsNullOrWhiteSpace($clean)) {
+                    $parts = -split $clean
+                    if ($parts.Count -ge 2 -and $domainsToRemove -contains $parts[1].ToLower()) {
+                        $removed = $true
+                        $keep = $false
+                    }
+                }
+                if ($keep) { $newLines += $line }
+            }
+
+            if ($removed) {
+                Set-Content -Path $hostsPath -Value $newLines -Force -ErrorAction Stop
+                Write-Log "  -> $pc : SUCCESS (Unblocked)"
+                $successCount++
+            } else {
+                Write-Log "  -> $pc : DOMAIN NOT FOUND"
+                $notFoundCount++
+            }
+        }
+        catch {
+            Write-Log "  -> $pc : FAILED ($($_.Exception.Message))"
+            $failedCount++
+        }
+    }
+
+    Write-Log "-------------------------------------------"
+    Write-Log "Unblock operation completed:"
+    Write-Log "  - Success: $successCount"
+    Write-Log "  - Domain not found: $notFoundCount"
+    Write-Log "  - Failed: $failedCount"
+    Write-Log "========== UNBLOCK OPERATION ENDED =========="
+
+    Update-Progress -current $total -total $total -status "Complete"
+    $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    
+    [System.Windows.Forms.MessageBox]::Show(
+        "Unblock process completed.`n`nSuccess: $successCount`nDomain not found: $notFoundCount`nFailed: $failedCount", 
+        "Operation Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+})
+
+$btnCheck.Add_Click({
+    $selected = $clbComputers.CheckedItems
+    if ($selected.Count -eq 0) { 
+        [System.Windows.Forms.MessageBox]::Show("Select at least one PC.", "Warning", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return 
+    }
+
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+    $total = $selected.Count
+    $current = 0
+
+    Write-Log "========== CHECK OPERATION STARTED =========="
+    Write-Log "Checking blocks on $total computers"
+    Write-Log "-------------------------------------------"
+
+    foreach ($pc in $selected) {
+        $current++
+        Update-Progress -current $current -total $total -status "Checking $pc"
+        Write-Log "--- Checking blocks on $pc ---"
+        
+        $hostsPath = "\\$pc\c$\Windows\System32\drivers\etc\hosts"
+        try {
+            if (-not (Test-RemoteAccess -ComputerName $pc)) {
+                Write-Log "     [$pc] ACCESS DENIED"
+                continue
+            }
+            
+            $lines = Get-Content -Path $hostsPath -ErrorAction Stop
+            $count = 0
+            foreach ($line in $lines) {
+                $clean = $line.Trim()
+                if (-not $clean.StartsWith("#") -and -not [string]::IsNullOrWhiteSpace($clean)) {
+                    $parts = -split $clean
+                    if ($parts.Count -ge 2) {
+                        Write-Log "     [$pc] IP: $($parts[0]) -> Domain: $($parts[1])"
+                        $count++
+                    }
+                }
+            }
+            Write-Log "     Total rules found on $pc : $count"
+        }
+        catch {
+            Write-Log "     [$pc] Cannot read hosts file."
+        }
+    }
+    Write-Log "========== CHECK OPERATION ENDED =========="
+    Update-Progress -current $total -total $total -status "Complete"
+    $form.Cursor = [System.Windows.Forms.Cursors]::Default
+})
+
+$btnRestore.Add_Click({
+    $selected = $clbComputers.CheckedItems
+    if ($selected.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show("Please select at least one computer.", "Warning", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        return
+    }
+
+    $confirm = [System.Windows.Forms.MessageBox]::Show(
+        "This will restore the LATEST backup for selected computers.`nContinue?", 
+        "Confirm Restore", [System.Windows.Forms.MessageBoxButtons]::YesNo, 
+        [System.Windows.Forms.MessageBoxIcon]::Question)
+    
+    if ($confirm -eq [System.Windows.Forms.DialogResult]::No) { return }
+
+    $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+    $total = $selected.Count
+    $current = 0
+    $successCount = 0
+    $failedCount = 0
+
+    Write-Log "========== RESTORE OPERATION STARTED =========="
+    Write-Log "Restoring latest backup for $total computers"
+    Write-Log "-------------------------------------------"
+
+    foreach ($pc in $selected) {
+        $current++
+        Update-Progress -current $current -total $total -status "Restoring $pc"
+        Write-Log "Restoring latest backup on $pc..."
+
+        $backupDir = "\\$pc\c$\Windows\System32\drivers\etc\backups"
+        $hostsPath = "\\$pc\c$\Windows\System32\drivers\etc\hosts"
+
+        try {
+            if (-not (Test-RemoteAccess -ComputerName $pc)) {
+                Write-Log "  -> $pc : ACCESS DENIED"
+                $failedCount++
+                continue
+            }
+
+            if (Test-Path $backupDir) {
+                $latestBackup = Get-ChildItem -Path $backupDir -Filter "hosts.bak_*" | 
+                               Sort-Object LastWriteTime -Descending | 
+                               Select-Object -First 1
+
+                if ($latestBackup) {
+                    Copy-Item -Path $latestBackup.FullName -Destination $hostsPath -Force -ErrorAction Stop
+                    Write-Log "  -> $pc : SUCCESS (Restored from $($latestBackup.Name))"
+                    $successCount++
+                } else {
+                    Write-Log "  -> $pc : NO BACKUP FOUND"
+                    $failedCount++
+                }
+            } else {
+                Write-Log "  -> $pc : BACKUP DIRECTORY NOT FOUND"
+                $failedCount++
+            }
+        }
+        catch {
+            Write-Log "  -> $pc : FAILED ($($_.Exception.Message))"
+            $failedCount++
+        }
+    }
+
+    Write-Log "-------------------------------------------"
+    Write-Log "Restore operation completed:"
+    Write-Log "  - Success: $successCount"
+    Write-Log "  - Failed: $failedCount"
+    Write-Log "========== RESTORE OPERATION ENDED =========="
+
+    Update-Progress -current $total -total $total -status "Complete"
+    $form.Cursor = [System.Windows.Forms.Cursors]::Default
+    
+    [System.Windows.Forms.MessageBox]::Show(
+        "Restore process completed.`n`nSuccess: $successCount`nFailed: $failedCount", 
+        "Operation Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+})
+
+$btnExport.Add_Click({
+    $saveDlg = New-Object System.Windows.Forms.SaveFileDialog
+    $saveDlg.Filter = "Text Files (*.txt)|*.txt|Log Files (*.log)|*.log"
+    $saveDlg.FileName = "HostsManager_Log_$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
+    if ($saveDlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $txtLog.Text | Out-File -FilePath $saveDlg.FileName -Encoding utf8
+        [System.Windows.Forms.MessageBox]::Show("Log exported successfully!", "Success", 
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+    }
+})
+
+$btnClearLog.Add_Click({
+    if ($txtLog.Text.Length -gt 0) {
+        $confirm = [System.Windows.Forms.MessageBox]::Show(
+            "Clear the log?", "Confirm", 
+            [System.Windows.Forms.MessageBoxButtons]::YesNo, 
+            [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($confirm -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $txtLog.Clear()
+        }
+    }
+})
+
+[void]$form.ShowDialog()
